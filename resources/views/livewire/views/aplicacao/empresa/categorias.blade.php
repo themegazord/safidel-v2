@@ -3,7 +3,8 @@
   <x-header title="Categorias"
             subtitle="Aqui você vai poder cadastrar os itens que seus clientes acessarão quando esse cardápio estiver operante! Personalize e organize suas categorias de produtos no Safi Delivery para criar experiências que conquistam.">
     <x-slot:actions>
-      <x-button label="Cadastrar categoria" icon="o-plus" class="btn btn-primary"/>
+      <x-button label="Cadastrar categoria" icon="o-plus" class="btn btn-primary"
+                wire:click="$set('drawerCadastroCategoria', true)"/>
     </x-slot:actions>
   </x-header>
 
@@ -51,17 +52,20 @@
                 <x-toggle label="Ativo"/>
               </div>
               <x-button label="Editar" icon="o-pencil-square" class="btn btn-secondary"/>
+              <x-button label="Remover" icon="o-trash" class="btn btn-error"/>
             </div>
           </div>
         </div>
 
+        {{--   card body     --}}
         <div class="space-y-4">
           <div class="text-lg font-semibold">
             <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
               @forelse($categoria->itens as $item)
                 <div class="bg-white border-border hover:shadow-md text-black">
                   <div class="aspect-video relative overflow-hidden rounded-t-lg">
-                    <img src="{{ $item->imagem }}" alt="{{ $item->nome }}" class="w-full h-full object-cover">
+                    <img src="{{ $item->imagem ?? 'https://placehold.co/400' }}" alt="{{ $item->nome }}"
+                         class="w-full h-full object-cover">
                   </div>
                   <div class="p-4">
                     <div class="space-y-2">
@@ -73,11 +77,17 @@
                           'badge-error' => $item->ehAtivo()
                         ]) value="{{ !$item->ehAtivo() ? 'Ativo' : 'Inativo' }}"/>
                       </div>
-                      <p class="text-sm">
+                      <p class="text-sm line-clamp-3">
                         {{ $item->descricao }}
                       </p>
                       <div class="flex items-center justify-between pt-2">
-                        <span class="text-lg font-bold text-primary">R$ {{ number_format($item->preco, 2, ',', '.') }}</span>
+                        @if($item->tipo === 'PIZ')
+                          <span
+                            class="text-lg font-bold text-primary">A partir de R$ {{ number_format($item->precosItemPizza->min('preco'), 2, ',', '.') }}</span>
+                        @else
+                          <span
+                            class="text-lg font-bold text-primary">R$ {{ number_format($item->preco, 2, ',', '.') }}</span>
+                        @endif
                       </div>
                     </div>
                   </div>
@@ -87,11 +97,181 @@
               @endforelse
             </div>
           </div>
+
+          <x-button class="btn btn-outline w-full" icon="o-plus" label="Adicionar item"/>
         </div>
       </div>
     @empty
       <x-alert title="Nenhuma categoria cadastrada" icon="o-exclamation-triangle"/>
     @endforelse
   </div>
+
+  {{--  drawer cadastro categoria--}}
+
+  <x-drawer wire:model="drawerCadastroCategoria"
+            class="w-full lg:w-[55vw]"
+            title="Cadastro de categoria"
+            subtitle="Insira as informações necessárias para cadastrar uma nova categoria"
+            @close="$wire.resetForms()"
+            separator
+            with-close-button
+            close-on-escape
+            right>
+
+    @if (is_null($categoriaCadastrar->tipo))
+      <div class="flex flex-col gap-4 mt-4">
+        <h3 class="text-lg sm:text-xl">Selecione o modelo de categoria para dividir o seu cardápio</h3>
+
+        <x-button class="flex gap-4 h-24 w-full justify-start p-4 flex-nowrap"
+                  @click="$wire.$set('categoriaCadastrar.tipo', 'I')">
+          <livewire:icons.categorias.itens-principais/>
+          <div class="flex flex-col gap-1 items-start">
+            <h3 class="text-base sm:text-lg font-bold">Itens principais</h3>
+            <p class="text-sm sm:text-base w-full">Comidas, lanches, sobremesas e etc.</p>
+          </div>
+        </x-button>
+
+        <x-button class="flex gap-4 h-24 w-full justify-start p-4 flex-nowrap"
+                  @click="$wire.$set('categoriaCadastrar.tipo', 'P')">
+          <livewire:icons.categorias.pizzas/>
+          <div class="flex flex-col gap-1 items-start">
+            <h3 class="text-base sm:text-lg font-bold">Pizza</h3>
+            <p class="text-sm sm:text-base w-full">Defina o tamanho, tipos de massa, bordas e sabores</p>
+          </div>
+        </x-button>
+      </div>
+    @endif
+
+    @if ($categoriaCadastrar->tipo === 'I')
+      <div class="flex flex-col gap-4 mt-4">
+        <div class="border border-purple-400 border-solid rounded-md h-20 flex justify-between items-center px-4 mb-8">
+          <div class="flex items-center gap-8">
+            <livewire:icons.categorias.itens-principais/>
+            <h3 class="text-lg font-bold">Itens principais</h3>
+          </div>
+          <p class="link" @click="$wire.$set('categoriaCadastrar.tipo', null)">Alterar</p>
+        </div>
+
+        <x-input label="Nome da categoria" placeholder="Ex: Marmitas, lanches, sorvetes..." wire:model="categoriaCadastrar.nome" required/>
+
+        <x-slot:actions>
+          <x-button class="btn btn-error" type="button"
+                    wire:click="$set('drawerCadastroCategoria', false)"
+                    label="Cancelar"/>
+          <x-button class="btn btn-success" type="submit" label="Cadastrar" spinner="cadastraCategoria"
+                    wire:click="cadastrarCategoria" wire:loading.attr="disabled"/>
+        </x-slot:actions>
+      </div>
+    @endif
+
+    @if ($categoriaCadastrar->tipo === 'P')
+      <div class="flex flex-col gap-4 mt-4">
+        <x-tabs wire:model="tabSelecionada">
+          <x-tab name="detalhes" label="Detalhes" class="flex flex-col gap-4 h-auto sm:h-[74vh]">
+            <div class="border border-purple-400 rounded-md h-20 flex flex-wrap justify-between items-center px-4 mb-8">
+              <div class="flex items-center gap-4 sm:gap-8">
+                <livewire:icons.categorias.pizzas/>
+                <h3 class="text-base sm:text-lg font-bold">Pizza</h3>
+              </div>
+              <p class="link text-sm sm:text-base" @click="$wire.$set('categoriaCadastrar.tipo', null)">Alterar</p>
+            </div>
+
+            <x-input label="Nome da categoria" placeholder="Ex: Marmitas, lanches, sorvetes..."
+                     wire:model="categoriaCadastrar.nome" required>
+            </x-input>
+          </x-tab>
+
+          <x-tab name="tamanhos" label="Tamanhos" class="flex flex-col gap-4 h-auto sm:h-[74vh]">
+            <h1 class="text-xl font-bold ">Tamanhos</h1>
+            <p class="text-base-content/50 text-sm mt-1 ">Indique aqui os tamanhos que suas pizzas são produzidas...</p>
+            <div class="flex flex-col gap-4">
+              @foreach ($categoriaCadastrar->tamanho as $chave => $tamanho)
+                <div class="grid grid-cols-1 sm:flex sm:grid-cols-none gap-4 items-end" wire:key="{{ $chave }}">
+                  <x-input label="Cód. PDV" wire:model="categoriaCadastrar.tamanho.{{ $chave }}.external_id"/>
+                  <x-input label="Nome" wire:model="categoriaCadastrar.tamanho.{{ $chave }}.nome"/>
+                  <x-input label="Qtde. Pedaços" wire:model="categoriaCadastrar.tamanho.{{ $chave }}.qtde_pedacos"/>
+                  <x-choices label="Qtde. Sabores"
+                             wire:model.fill="categoriaCadastrar.tamanho.{{ $chave }}.qtde_sabores"
+                             :options="$qtd_sabores" option-value="id" option-label="nome" height="max-h-96"/>
+                  @if (count($categoriaCadastrar->tamanho) > 1)
+                    <x-dropdown>
+                      <x-menu-item title="Remover" icon="o-trash" wire:click="removerCategoriaTamanho({{ $chave }})"/>
+                    </x-dropdown>
+                  @endif
+                </div>
+              @endforeach
+              <x-button icon="o-plus" class="btn-outline w-full sm:w-3/6" label="Novo tamanho"
+                        wire:click="adicionarCategoriaTamanho"/>
+            </div>
+          </x-tab>
+
+          <x-tab name="massas" label="Massas" class="flex flex-col gap-4 h-auto sm:h-[74vh]">
+            <h1 class="text-xl font-bold ">Massas</h1>
+            <p class="text-base-content/50 text-sm mt-1 ">Adicione os tipos de massa disponíveis...</p>
+            <div class="flex flex-col gap-4">
+              @foreach ($categoriaCadastrar->massa as $chave => $massa)
+                <div class="grid grid-cols-1 sm:flex sm:grid-cols-none gap-4 items-end" wire:key="massa-{{ $chave }}">
+                  <x-input label="Nome" wire:model="categoriaCadastrar.massa.{{ $chave }}.nome"/>
+                  <x-input label="Preço" wire:model="categoriaCadastrar.massa.{{ $chave }}.preco" suffix="R$" money
+                           locale="pt-BR"/>
+                  <x-input label="Código PDV" wire:model="categoriaCadastrar.massa.{{ $chave }}.external_id"/>
+                  <x-dropdown>
+                    <x-menu-item title="Remover" icon="o-trash" wire:click="removerCategoriaMassa({{ $chave }})"/>
+                  </x-dropdown>
+                </div>
+              @endforeach
+              <x-button icon="o-plus" class="btn-outline w-full sm:w-1/6" label="Nova massa"
+                        wire:click="adicionarCategoriaMassa"/>
+            </div>
+          </x-tab>
+
+          <x-tab name="bordas" label="Bordas" class="flex flex-col gap-4 h-auto sm:h-[74vh]">
+            <h1 class="text-xl font-bold ">Bordas</h1>
+            <p class="text-base-content/50 text-sm mt-1 ">Adicione os tipos de borda disponíveis...</p>
+            <div class="flex flex-col gap-4">
+              @foreach ($categoriaCadastrar->borda as $chave => $borda)
+                <div class="grid grid-cols-1 sm:flex sm:grid-cols-none gap-4 items-end" wire:key="borda-{{ $chave }}">
+                  <x-input label="Nome" wire:model="categoriaCadastrar.borda.{{ $chave }}.nome"/>
+                  <x-input label="Preço" wire:model="categoriaCadastrar.borda.{{ $chave }}.preco" suffix="R$" money
+                           locale="pt-BR"/>
+                  <x-input label="Código PDV" wire:model="categoriaCadastrar.borda.{{ $chave }}.external_id"/>
+                  <x-dropdown>
+                    <x-menu-item title="Remover" icon="o-trash" wire:click="removerCategoriaBorda({{ $chave }})"/>
+                  </x-dropdown>
+                </div>
+              @endforeach
+              <x-button icon="o-plus" class="btn-outline w-full sm:w-1/6" label="Nova borda"
+                        wire:click="adicionarCategoriaBorda"/>
+            </div>
+          </x-tab>
+        </x-tabs>
+
+        <x-slot:actions>
+          <x-button type="button" class="btn btn-error" wire:click="$set('drawerCadastroCategoria', false)"
+                    label="Cancelar"/>
+          @switch($tabSelecionada)
+            @case('detalhes')
+              <x-button class="btn btn-success" type="button" label="Próximo"
+                        @click="$wire.$set('tabSelecionada', 'tamanhos')"/>
+              @break
+            @case('tamanhos')
+              <x-button class="btn btn-success" type="button" label="Próximo"
+                        @click="$wire.$set('tabSelecionada', 'massas')"/>
+              @break
+            @case('massas')
+              <x-button class="btn btn-success" type="button" label="Próximo"
+                        @click="$wire.$set('tabSelecionada', 'bordas')"/>
+              @break
+            @case('bordas')
+              <x-button class="btn btn-success" type="button" label="Próximo" wire:click="cadastraCategoria"/>
+              @break
+          @endswitch
+        </x-slot:actions>
+      </div>
+    @endif
+
+  </x-drawer>
+
+  {{--  drawer cadastro categoria--}}
 
 </div>
