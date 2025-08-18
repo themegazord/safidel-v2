@@ -51,7 +51,8 @@
               <div class="flex items-center gap-2">
                 <x-toggle label="Ativo"/>
               </div>
-              <x-button label="Editar" icon="o-pencil-square" class="btn btn-secondary"/>
+              <x-button label="Editar" icon="o-pencil-square" class="btn btn-secondary"
+                        wire:click="setCategoriaAtual({{ $categoria->id }}, 'edicao')"/>
               <x-button label="Remover" icon="o-trash" class="btn btn-error"/>
             </div>
           </div>
@@ -152,13 +153,14 @@
           <p class="link" @click="$wire.$set('categoriaCadastrar.tipo', null)">Alterar</p>
         </div>
 
-        <x-input label="Nome da categoria" placeholder="Ex: Marmitas, lanches, sorvetes..." wire:model="categoriaCadastrar.nome" required/>
+        <x-input label="Nome da categoria" placeholder="Ex: Marmitas, lanches, sorvetes..."
+                 wire:model="categoriaCadastrar.nome" required/>
 
         <x-slot:actions>
           <x-button class="btn btn-error" type="button"
                     wire:click="$set('drawerCadastroCategoria', false)"
                     label="Cancelar"/>
-          <x-button class="btn btn-success" type="submit" label="Cadastrar" spinner="cadastraCategoria"
+          <x-button class="btn btn-success" type="submit" label="Cadastrar" spinner="cadastrarCategoria"
                     wire:click="cadastrarCategoria" wire:loading.attr="disabled"/>
         </x-slot:actions>
       </div>
@@ -166,7 +168,7 @@
 
     @if ($categoriaCadastrar->tipo === 'P')
       <div class="flex flex-col gap-4 mt-4">
-        <x-tabs wire:model="tabSelecionada">
+        <x-tabs wire:model.live="tabSelecionada">
           <x-tab name="detalhes" label="Detalhes" class="flex flex-col gap-4 h-auto sm:h-[74vh]">
             <div class="border border-purple-400 rounded-md h-20 flex flex-wrap justify-between items-center px-4 mb-8">
               <div class="flex items-center gap-4 sm:gap-8">
@@ -195,13 +197,13 @@
                              :options="$qtd_sabores" option-value="id" option-label="nome" height="max-h-96"/>
                   @if (count($categoriaCadastrar->tamanho) > 1)
                     <x-dropdown>
-                      <x-menu-item title="Remover" icon="o-trash" wire:click="removerCategoriaTamanho({{ $chave }})"/>
+                      <x-menu-item title="Remover" icon="o-trash" wire:click="removerCategoriaPropriedade('tamanho', {{ $chave }})"/>
                     </x-dropdown>
                   @endif
                 </div>
               @endforeach
               <x-button icon="o-plus" class="btn-outline w-full sm:w-3/6" label="Novo tamanho"
-                        wire:click="adicionarCategoriaTamanho"/>
+                        wire:click="adicionarCategoriaPropriedade('tamanho')"/>
             </div>
           </x-tab>
 
@@ -216,12 +218,12 @@
                            locale="pt-BR"/>
                   <x-input label="Código PDV" wire:model="categoriaCadastrar.massa.{{ $chave }}.external_id"/>
                   <x-dropdown>
-                    <x-menu-item title="Remover" icon="o-trash" wire:click="removerCategoriaMassa({{ $chave }})"/>
+                    <x-menu-item title="Remover" icon="o-trash" wire:click="removerCategoriaPropriedade('massa', {{ $chave }})"/>
                   </x-dropdown>
                 </div>
               @endforeach
               <x-button icon="o-plus" class="btn-outline w-full sm:w-1/6" label="Nova massa"
-                        wire:click="adicionarCategoriaMassa"/>
+                        wire:click="adicionarCategoriaPropriedade('massa')"/>
             </div>
           </x-tab>
 
@@ -236,12 +238,16 @@
                            locale="pt-BR"/>
                   <x-input label="Código PDV" wire:model="categoriaCadastrar.borda.{{ $chave }}.external_id"/>
                   <x-dropdown>
-                    <x-menu-item title="Remover" icon="o-trash" wire:click="removerCategoriaBorda({{ $chave }})"/>
+                    <x-menu-item title="Remover" icon="o-trash" wire:click="removerCategoriaPropriedade('borda', {{ $chave }})"/>
                   </x-dropdown>
                 </div>
               @endforeach
               <x-button icon="o-plus" class="btn-outline w-full sm:w-1/6" label="Nova borda"
-                        wire:click="adicionarCategoriaBorda"/>
+                        wire:click="adicionarCategoriaPropriedade('borda')"/>
+            </div>
+
+            <div class="mt-4">
+              <x-errors title="Oops!" description="Verifique os campos abaixo e tente novamente" icon="o-face-frown"/>
             </div>
           </x-tab>
         </x-tabs>
@@ -263,7 +269,7 @@
                         @click="$wire.$set('tabSelecionada', 'bordas')"/>
               @break
             @case('bordas')
-              <x-button class="btn btn-success" type="button" label="Próximo" wire:click="cadastraCategoria"/>
+              <x-button class="btn btn-success" type="button" label="Cadastrar" wire:click="cadastrarCategoria"/>
               @break
           @endswitch
         </x-slot:actions>
@@ -273,5 +279,158 @@
   </x-drawer>
 
   {{--  drawer cadastro categoria--}}
+
+  {{-- drawer edicao categoria --}}
+
+  <x-drawer wire:model="drawerEdicaoCategoria"
+            class="w-full lg:w-[55vw]"
+            title="Edição da categoria"
+            subtitle="Insira as informações necessárias para editar uma categoria"
+            @close="$wire.resetForms()"
+            separator
+            with-close-button
+            close-on-escape
+            right>
+
+    <x-form wire:submit="editarCategoria">
+      @if (!is_null($categoriaAtual))
+        @if ($categoriaAtual->tipo === 'I')
+          <div class="flex flex-col gap-4 mt-4">
+            <div
+              class="border border-purple-400 border-solid rounded-md h-20 flex justify-between items-center px-4 mb-8">
+              <div class="flex items-center gap-8">
+                <livewire:icons.categorias.itens-principais/>
+                <h3 class="text-lg font-bold">Itens principais</h3>
+              </div>
+            </div>
+
+            <x-input placeholder="Ex: Marmitas, lanches, sorvetes..." value="{{ $categoriaAtual->nome }}"
+                     wire:model.fill="categoriaEdicao.nome" label="Nome da categoria"/>
+
+          </div>
+        @endif
+
+        @if ($categoriaAtual->tipo === 'P')
+          <x-tabs wire:model.live="tabSelecionada">
+            <x-tab name="detalhes" label="Detalhes" class="flex flex-col gap-4 h-[74vh]">
+              <div class="border border-purple-400 rounded-md h-20 flex justify-between items-center px-4 mb-8">
+                <div class="flex items-center gap-4">
+                  <livewire:icons.categorias.pizzas/>
+                  <h3 class="text-lg font-bold">Pizza</h3>
+                </div>
+              </div>
+              <x-input placeholder="Ex: Marmitas, lanches, sorvetes..." wire:model="categoriaEdicao.nome" label="Nome da categoria" />
+            </x-tab>
+            <x-tab name="tamanhos" label="Tamanhos" class="flex flex-col gap-4 h-[74vh] overflow-y-scroll" >
+              <h1 class="text-xl font-bold ">Tamanhos</h1>
+              <p class="text-base-content/50 text-sm mt-1 ">Indique aqui os tamanhos que suas pizzas são produzidas...</p>
+              <div class="flex flex-col gap-4">
+                @foreach ($categoriaEdicao->tamanhos as $chave => $tamanho)
+                  <div class="grid grid-cols-1 sm:flex sm:grid-cols-none gap-4 items-end" wire:key="{{ $chave }}">
+                    <x-input class="hidden" wire:model="categoriaEdicao.tamanhos.{{ $chave }}.id"/>
+                    <x-input label="Cód. PDV" wire:model="categoriaEdicao.tamanhos.{{ $chave }}.external_id"/>
+                    <x-input label="Nome" wire:model="categoriaEdicao.tamanhos.{{ $chave }}.nome"/>
+                    <x-input label="Qtde. Pedaços" wire:model="categoriaEdicao.tamanhos.{{ $chave }}.qtde_pedacos"/>
+                    <x-choices label="Qtde. Sabores" wire:model.fill="categoriaEdicao.tamanhos.{{ $chave }}.qtde_sabores"
+                               :options="$qtd_sabores" option-value="id" option-label="nome"/>
+                    @if (count($categoriaEdicao->tamanhos) > 1)
+                      <x-dropdown>
+                        <x-menu-item title="Remover" icon="o-trash"
+                                     wire:click="removerCategoriaPropriedade('tamanhos', {{ $chave }}, {{ $categoriaEdicao->tamanhos[$chave]['id'] }})"/>
+                      </x-dropdown>
+                    @endif
+                  </div>
+                @endforeach
+                <x-button icon="o-plus" class="btn-outline w-full sm:w-1/3" label="Novo tamanho"
+                          wire:click="adicionarCategoriaPropriedade('tamanhos', true)"/>
+              </div>
+            </x-tab>
+            <x-tab name="massas" label="Massas" class="flex flex-col gap-4 h-[74vh] overflow-y-scroll"
+                   :disabled="empty($categoriaEdicao->nome)">
+              <h1 class="text-xl font-bold ">Massas</h1>
+              <p class="text-base-content/50 text-sm mt-1 ">Adicione os tipos de massa disponíveis...</p>
+              <div class="flex flex-col gap-4">
+                @foreach ($categoriaEdicao->massas as $chave => $massa)
+                  <div class="grid grid-cols-1 sm:flex sm:grid-cols-none gap-4 items-end" wire:key="{{ $chave }}">
+                    <x-input class="hidden" wire:model="categoriaEdicao.massas.{{ $chave }}.id"/>
+                    <x-input label="Massa" wire:model="categoriaEdicao.massas.{{ $chave }}.nome"/>
+                    <x-input label="Código PDV" wire:model="categoriaEdicao.massas.{{ $chave }}.external_id"/>
+                    <x-input label="Preço" wire:model="categoriaEdicao.massas.{{ $chave }}.preco" suffix="R$" money
+                             locale="pt-BR"/>
+                    @if (count($categoriaEdicao->massas) > 1)
+                      <x-dropdown>
+                        <x-menu-item title="Remover" icon="o-trash"
+                                     wire:click="removerCategoriaPropriedade('massas', {{ $chave }}, {{ $categoriaEdicao->massas[$chave]['id'] }})"/>
+                      </x-dropdown>
+                    @endif
+                  </div>
+                @endforeach
+                <x-button icon="o-plus" class="btn-outline w-full sm:w-1/3" label="Nova massa"
+                          wire:click="adicionarCategoriaPropriedade('massas', true)"/>
+              </div>
+            </x-tab>
+            <x-tab name="bordas" label="Bordas" class="flex flex-col gap-4 h-[74vh] overflow-y-scroll"
+                   :disabled="empty($categoriaEdicao->nome)">
+              <h1 class="text-xl font-bold ">Bordas</h1>
+              <p class="text-base-content/50 text-sm mt-1 ">Adicione os tipos de borda disponíveis...</p>
+              <div class="flex flex-col gap-4">
+                @foreach ($categoriaEdicao->bordas as $chave => $borda)
+                  <div class="grid grid-cols-1 sm:flex sm:grid-cols-none gap-4 items-end" wire:key="{{ $chave }}">
+                    <x-input class="hidden" wire:model="categoriaEdicao.bordas.{{ $chave }}.id"/>
+                    <x-input label="Borda" wire:model="categoriaEdicao.bordas.{{ $chave }}.nome"/>
+                    <x-input label="Código PDV" wire:model="categoriaEdicao.bordas.{{ $chave }}.external_id"/>
+                    <x-input label="Preço" wire:model="categoriaEdicao.bordas.{{ $chave }}.preco" suffix="R$" money
+                             locale="pt-BR"/>
+                    @if (count($categoriaEdicao->bordas) > 1)
+                      <x-dropdown>
+                        <x-menu-item title="Remover" icon="o-trash"
+                                     wire:click="removerCategoriaPropriedade('bordas', {{ $chave }}, {{ $categoriaEdicao->bordas[$chave]['id'] }})"/>
+                      </x-dropdown>
+                    @endif
+                  </div>
+                @endforeach
+                <x-button icon="o-plus" class="btn-outline w-full sm:w-1/3" label="Nova borda"
+                          wire:click="adicionarCategoriaPropriedade('bordas', true)"/>
+              </div>
+            </x-tab>
+          </x-tabs>
+        @endif
+      @endif
+    </x-form>
+
+    @if(!is_null($categoriaAtual))
+      <x-slot:actions>
+        <x-button type="button" class="btn btn-error" @click="$wire.set('drawerEdicaoCategoria', false)"
+                  label="Cancelar"/>
+        @if($categoriaAtual->tipo === 'I')
+          <x-button class="btn btn-success" wire:click="editarCategoria" type="submit" label="Salvar" spinner="editarCategoria" wire:loading.attr="disabled"/>
+        @endif
+
+        @if($categoriaAtual->tipo === 'P')
+          @switch($tabSelecionada)
+            @case('detalhes')
+              <x-button class="btn btn-success" type="button" label="Próximo"
+                        @click="$wire.$set('tabSelecionada', 'tamanhos')"/>
+              @break
+            @case('tamanhos')
+              <x-button class="btn btn-success" type="button" label="Próximo"
+                        @click="$wire.$set('tabSelecionada', 'massas')"/>
+              @break
+            @case('massas')
+              <x-button class="btn btn-success" type="button" label="Próximo"
+                        @click="$wire.$set('tabSelecionada', 'bordas')"/>
+              @break
+            @case('bordas')
+              <x-button class="btn btn-success" type="button" label="Salvar" wire:click="editarCategoria" spinner="editarCategoria" wire:loading.attr="disabled"/>
+              @break
+          @endswitch
+        @endif
+
+      </x-slot:actions>
+    @endif
+
+  </x-drawer>
+
+  {{-- drawer edicao categoria --}}
 
 </div>
