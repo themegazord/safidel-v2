@@ -53,7 +53,7 @@
               </div>
               <x-button label="Editar" icon="o-pencil-square" class="btn btn-secondary"
                         wire:click="setCategoriaAtual({{ $categoria->id }}, 'edicao')"/>
-              <x-button label="Remover" icon="o-trash" class="btn btn-error"/>
+              <x-button label="Remover" icon="o-trash" class="btn btn-error" wire:click="setCategoriaAtual({{ $categoria->id }}, 'remocao')"/>
             </div>
           </div>
         </div>
@@ -94,7 +94,9 @@
                   </div>
                 </div>
               @empty
-                <x-alert title="Nenhuma categoria cadastrada" icon="o-exclamation-triangle"/>
+                <div class="col-span-full flex justify-center">
+                  <x-alert title="Nenhuma categoria cadastrada" icon="o-exclamation-triangle"/>
+                </div>
               @endforelse
             </div>
           </div>
@@ -432,5 +434,47 @@
   </x-drawer>
 
   {{-- drawer edicao categoria --}}
+
+  {{--  modal confirmacao remocao categoria--}}
+
+  <x-modal
+    wire:model="modalConfirmacaoRemocaoCategoria"
+    title="Remover categoria"
+    subtitle="Esta ação não poderá ser desfeita."
+    icon="o-exclamation-triangle"
+    separator
+    persistent
+  >
+    @if($categoriaAtual)
+      <div class="space-y-2">
+        <p class="text-sm">
+          Tem certeza que deseja remover a categoria
+          <span class="font-semibold">"{{ $categoriaAtual->nome }}"</span>?
+        </p>
+        <p class="text-xs text-base-content/60">
+          Observação: itens vinculados podem deixar de aparecer para seus clientes.
+        </p>
+      </div>
+    @endif
+
+    <x-slot:actions>
+      <x-button
+        class="btn btn-ghost"
+        label="Cancelar"
+        @click="$wire.$set('modalConfirmRemocaoCategoria', false)"
+      />
+      <x-button
+        class="btn btn-error"
+        icon="o-trash"
+        label="Remover"
+        wire:click="removerCategoria"
+        spinner="removerCategoria"
+        wire:loading.attr="disabled"
+      />
+    </x-slot:actions>
+  </x-modal>
+
+
+  {{--  modal confirmacao remocao categoria--}}
 
 </div>

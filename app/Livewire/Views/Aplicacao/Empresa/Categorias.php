@@ -38,6 +38,10 @@ class Categorias extends Component
   // DTO
   public ?Categoria $categoriaAtual = null;
 
+  // Modal
+
+  public bool $modalConfirmacaoRemocaoCategoria = false;
+
   // Drawers
   public bool $drawerEdicaoCategoria = false;
   public bool $drawerCadastroCategoria = false;
@@ -204,13 +208,29 @@ class Categorias extends Component
     $this->reloadItens();
   }
 
+  public function removerCategoria(): void {
+    $this->categoriaAtual->forceDelete();
+    $this->success('Categoria removida com sucesso!');
+    $this->resetForms();
+    $this->reloadItens();
+    $this->modalConfirmacaoRemocaoCategoria = false;
+  }
+
   public function setCategoriaAtual(int $categoria_id, string $metodo): void
   {
-    $this->categoriaAtual = Categoria::query()->find($categoria_id)->load(['tamanhos', 'massas', 'bordas']);
+    $this->categoriaAtual = Categoria::withTrashed()
+      ->findOrFail($categoria_id)
+      ->load(['tamanhos', 'massas', 'bordas']);
+
 
     if ($metodo === 'edicao') {
       $this->categoriaEdicao->fill($this->categoriaAtual->toArray());
       $this->drawerEdicaoCategoria = true;
+      return;
+    }
+
+    if ($metodo === 'remocao') {
+      $this->modalConfirmacaoRemocaoCategoria = true;
     }
   }
 
