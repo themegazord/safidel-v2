@@ -104,7 +104,8 @@
             </div>
           </div>
 
-          <x-button class="btn btn-outline w-full" icon="o-plus" label="Adicionar item"/>
+          <x-button class="btn btn-outline w-full" icon="o-plus" label="Adicionar item"
+                    wire:click="setCategoriaAtual({{ $categoria->id }}, 'cadastro_item')"/>
         </div>
       </div>
     @empty
@@ -113,7 +114,6 @@
   </div>
 
   {{--  drawer cadastro categoria--}}
-
   <x-drawer wire:model="drawerCadastroCategoria"
             class="w-full lg:w-[55vw]"
             title="Cadastro de categoria"
@@ -285,11 +285,9 @@
     @endif
 
   </x-drawer>
-
   {{--  drawer cadastro categoria--}}
 
   {{-- drawer edicao categoria --}}
-
   <x-drawer wire:model="drawerEdicaoCategoria"
             class="w-full lg:w-[55vw]"
             title="Edição da categoria"
@@ -443,11 +441,208 @@
     @endif
 
   </x-drawer>
-
   {{-- drawer edicao categoria --}}
 
-  {{--  modal confirmacao remocao categoria--}}
+  {{-- Cadastro de itens --}}
+  <x-drawer wire:model="drawerCadastroItem"
+            class="w-full lg:w-[55vw]"
+            title="Cadastro de itens"
+            subtitle="Insira as informações necessárias para cadastrar um item"
+            @close="$wire.resetForms()"
+            separator
+            with-close-button
+            close-on-escape
+            right>
+    @if (!is_null($categoriaAtual))
+      @if ($categoriaAtual->tipo === 'I')
+        <div class="flex flex-col gap-4 mt-4">
+          <h1 class="text-xl font-bold ">Adicionar item</h1>
+          <h3 class="text-base-content/50 text-sm mt-1">Selecione o tipo de item que você deseja adicionar ao
+            cardápio:</h3>
 
+          <x-button class="flex gap-4 h-24 w-full justify-start p-4 flex-nowrap"
+                    wire:click="setTipoItemNormalParaCadastro('PRE')">
+            <livewire:icons.tipos-item.preparado estilo="fill-purple-600" width="40px" height="40px"/>
+            <div class="flex flex-col gap-2 items-start">
+              <h3 class="text-lg font-bold">Preparado</h3>
+              <p class="text-base-content/50 text-sm mt-1">Itens produzidos pela sua loja, como marmitas, bolos e
+                lanches.</p>
+            </div>
+          </x-button>
+
+          <x-button class="flex gap-4 h-24 w-full justify-start p-4 flex-nowrap"
+                    wire:click="setTipoItemNormalParaCadastro('BEB')">
+            <livewire:icons.tipos-item.bebida width="40px" height="40px"/>
+            <div class="flex flex-col gap-2 items-start">
+              <h3 class="text-lg font-bold">Bebida Industrializada</h3>
+              <p class="text-base-content/50 text-sm mt-1">Bebidas como: Refrigerantes, cervejas, energéticos e
+                outros.</p>
+            </div>
+          </x-button>
+
+          <x-button class="flex gap-4 h-24 w-full justify-start p-4 flex-nowrap"
+                    wire:click="setTipoItemNormalParaCadastro('IND')">
+            <livewire:icons.tipos-item.industrializado estilo="fill-purple-600" width="40px" height="40px"/>
+            <div class="flex flex-col gap-2 items-start">
+              <h3 class="text-lg font-bold">Industrializado</h3>
+              <p class="text-base-content/50 text-sm mt-1">Itens prontos, como refrigerantes, chicletes e outros.</p>
+            </div>
+          </x-button>
+        </div>
+      @endif
+
+
+      @if ($categoriaAtual->tipo === 'P')
+        <x-form wire:submit="cadastraItem" class="flex flex-col gap-8">
+          <div class="flex flex-col gap-4 mt-4">
+            <x-tabs wire:model.live="tabCadastroItemSelecionada">
+              <x-tab name="detalhes" label="Detalhes" class="h-[74vh]">
+                <div class="flex flex-col gap-4 sm:flex-row mb-4">
+                  <x-file wire:model.live="fotoTemporaria" accept="image/jpeg">
+                    @if ($fotoTemporaria)
+                      <img src="{{ $fotoTemporaria->temporaryUrl() }}" class="rounded max-w-[300px] max-h-[300px]" alt="Pré-visualização"/>
+                    @elseif (!empty($itemCadastrar->imagem))
+                      <img src="{{ $itemCadastrar->imagem }}" class="rounded max-w-[300px] max-h-[300px]" alt="Imagem do item"/>
+                    @else
+                      <img src="https://placehold.co/300" class="rounded max-w-[300px] max-h-[300px]" alt="Placeholder"/>
+                    @endif
+                  </x-file>
+
+                  <div class="w-full">
+                    <div class="mb-4">
+                      <x-input label="Categoria" value="{{ $categoriaAtual->nome }}" readonly required/>
+                    </div>
+                    <div class="mb-4">
+                      <x-input label="Nome do prato" wire:model="itemCadastrar.nome" required/>
+                    </div>
+                    <div class="mb-4">
+                      <x-input label="Código PDV" wire:model="itemCadastrar.external_id" required/>
+                    </div>
+                    <x-textarea label="Descrição" wire:model="itemCadastrar.descricao"
+                                placeholder="Pizza artesanal de frango com catupiry e borda de cheddar" rows="5"/>
+                  </div>
+                </div>
+              </x-tab>
+              <x-tab name="precos" label="Preço" class="h-[74vh]">
+                <div class="flex flex-row gap-8 flex-wrap justify-center">
+                  @foreach ($itemCadastrar->precos as $chave => $precoTamanho)
+                    <x-card
+                      class="w-[200px] flex flex-col items-center border-primary-500 border-solid border-2 rounded-md p-4 mb-4"
+                      wire:key="{{ $chave }}">
+                      <livewire:icons.itens.mini-pizza wire:key="{{ $chave }}"/>
+                      <div class="flex flex-row gap-4 m-auto mb-4">
+                        <input type="checkbox" wire:model.change="itemCadastrar.precos.{{ $chave }}.status">
+                        <label for="statusItemPizza">{{ $precoTamanho['tamanho'] }}</label>
+                      </div>
+                      <x-input wire:model="itemCadastrar.precos.{{ $chave }}.preco"
+                               prefix="R$"
+                               locale="pt-BR"
+                               money
+                               inline
+                               :disabled="!$itemCadastrar->precos[$chave]['status']"/>
+                    </x-card>
+                  @endforeach
+                </div>
+              </x-tab>
+              <x-tab name="classificacao" label="Classificação"
+                     class="h-[74vh]">
+                <h1 class="font-bold text-xl mb-4">Restrições alimentares</h1>
+                <p class="text-lg mb-4">Indique se seu item é adequado a restrições alimentares diversas para atrair a
+                  atenção de clientes</p>
+                <x-alert icon="o-exclamation-triangle" class="alert-warning mb-4">
+                  <strong>Lembre-se que você é responsável por todas as informações sobre os itens.</strong>
+                </x-alert>
+
+                <div class="flex flex-col gap-4">
+                  <div class="flex gap-4">
+                    <input type="checkbox" name="vegetariano" id="vegetariano"
+                           wire:model="itemCadastrar.classificacao.0.status">
+                    <div class="flex gap-4 items-center">
+                      <livewire:icons.classificacao.vegetariano width="30px" height="30px" estilo="fill-purple-600"/>
+                      <div class="flex flex-col gap-2">
+                        <p class="text-lg">Vegetariano</p>
+                        <p>Sem carne de nenhum tipo</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="flex gap-4">
+                    <input type="checkbox" name="vegano" id="vegano" wire:model="itemCadastrar.classificacao.1.status">
+                    <div class="flex gap-4 items-center">
+                      <livewire:icons.classificacao.vegano width="30px" height="30px" estilo="fill-purple-600"/>
+                      <div class="flex flex-col gap-2">
+                        <p class="text-lg">Vegano</p>
+                        <p>Sem produtos de origem animal, como carne, ovo ou leite</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="flex gap-4">
+                    <input type="checkbox" name="organico" id="organico"
+                           wire:model="itemCadastrar.classificacao.2.status">
+                    <div class="flex gap-4 items-center">
+                      <livewire:icons.classificacao.organico width="30px" height="30px" estilo="fill-purple-600"/>
+                      <div class="flex flex-col gap-2">
+                        <p class="text-lg">Orgânico</p>
+                        <p>Cultivado sem agrotóxicos, segundo a lei 10.831</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="flex gap-4">
+                    <input type="checkbox" name="sem-acucar" id="sem-acucar"
+                           wire:model="itemCadastrar.classificacao.3.status">
+                    <div class="flex gap-4 items-center">
+                      <livewire:icons.classificacao.sem-acucar width="30px" height="30px" estilo="fill-purple-600"/>
+                      <div class="flex flex-col gap-2">
+                        <p class="text-lg">Sem açúcar</p>
+                        <p>Não contém nenhum tipo de açúcar (cristal, orgânico, mascavo etc.)</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="flex gap-4">
+                    <input type="checkbox" name="zero-lactose" id="zero-lactose"
+                           wire:model="itemCadastrar.classificacao.4.status">
+                    <div class="flex gap-4 items-center">
+                      <livewire:icons.classificacao.zero-lactose width="30px" height="30px" estilo="fill-purple-600"/>
+                      <div class="flex flex-col gap-2">
+                        <p class="text-lg">Zero lactose</p>
+                        <p>Não contém lactose, ou seja, leite e seus derivados</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </x-tab>
+            </x-tabs>
+          </div>
+        </x-form>
+        <x-slot:actions>
+          <x-button label="Cancelar" @click="$wire.set('drawerCadastroItem', false)" class="btn btn-error"/>
+          @if($categoriaAtual->tipo === 'P')
+            @switch($tabCadastroItemSelecionada)
+              @case('detalhes')
+                <x-button label="Próximo" @click="$wire.$set('tabCadastroItemSelecionada', 'precos')"
+                          class="btn btn-success"/>
+                @break
+              @case('precos')
+                <x-button label="Próximo" @click="$wire.$set('tabCadastroItemSelecionada', 'classificacao')"
+                          class="btn btn-success"/>
+                @break
+              @case('classificacao')
+                <x-button label="Cadastrar" wire:click="cadastraItem" spinner="cadastraItem"
+                          wire:loading.attr="disabled"
+                          class="btn btn-success"/>
+                @break
+            @endswitch
+          @endif
+        </x-slot:actions>
+      @endif
+    @endif
+  </x-drawer>
+  {{-- fim Cadastro de itens --}}
+
+  {{--  modal confirmacao remocao categoria--}}
   <x-modal
     wire:model="modalConfirmacaoRemocaoCategoria"
     title="Remover categoria"
@@ -484,8 +679,6 @@
       />
     </x-slot:actions>
   </x-modal>
-
-
   {{--  modal confirmacao remocao categoria--}}
 
 </div>

@@ -5,12 +5,13 @@ namespace App\Livewire\Views\Autenticacao;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Illuminate\Support\Facades\Auth;
 
 class Login extends Component
 {
   public string $email = '';
   public string $password = '';
-  public bool $rememberMe = false;
+  public bool $manterConectado = false;
   public bool $isLoading = false;
 
   protected $rules = [
@@ -29,7 +30,7 @@ class Login extends Component
       $this->addError('email', 'Email ou senha inválidos');
     }
 
-    \Auth::login($usuario = \App\Models\User::where('email', $this->email)->first(), $this->rememberMe);
+    Auth::login($usuario = \App\Models\User::where('email', $this->email)->first(), $this->manterConectado);
 
     if (!$usuario->isEmpresa()) {
 

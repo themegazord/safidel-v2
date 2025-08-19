@@ -10,19 +10,44 @@ use App\Models\CategoriaMassa;
 use App\Models\CategoriaTamanho;
 use App\Models\Empresa;
 use App\Models\Item;
+use App\TrataMGCObjectStoreTrait;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Validate;
 use Livewire\Component;
 use App\Livewire\Forms\Cardapio\Categoria\CadastroForm as CadastroCategoria;
+use App\Livewire\Forms\Cardapio\Item\CadastroForm as CadastroItem;
 use App\Livewire\Forms\Cardapio\Categoria\EdicaoForm as EdicaoCategoria;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Livewire\WithFileUploads;
 use Mary\Traits\Toast;
 
 #[AllowDynamicProperties]
 class Categorias extends Component
 {
-  use Toast;
+  use Toast, WithFileUploads, TrataMGCObjectStoreTrait;
+
+  #[Validate(rule: ['image', 'max:2048', 'mimes:jpg'], message: [
+    'image' => 'Deve ser encaminhado uma imagem',
+    'max' => 'A imagem deve conter no máximo 2mb.',
+    'mimes:jpg' => 'Aceitamos apenas .jpg'
+  ])]
+  public ?TemporaryUploadedFile $fotoTemporaria = null;
+  public ?TemporaryUploadedFile $fotoTemporariaEdicao = null;
+
+  // Constantes de domínio e tipos de preço
+  private const CATEGORIA_ITENS = 'I';
+  private const CATEGORIA_PIZZA = 'P';
+
+  private const ITEM_PREPARADO = 'PRE';
+  private const ITEM_BEBIDA = 'BEB';
+  private const ITEM_INDUSTR = 'IND';
+  private const ITEM_PIZZA = 'PIZ';
+
+  private const PRECO_TIPO_FIXO = 'fixo';
+  private const PRECO_TIPO_POR_ITEM = 'preco_item';
 
   public int $cardapio_id;
   public Collection $categorias;
@@ -39,7 +64,6 @@ class Categorias extends Component
   public ?Categoria $categoriaAtual = null;
 
   // Modal
-
   public bool $modalConfirmacaoRemocaoCategoria = false;
 
   // Drawers
@@ -67,17 +91,25 @@ class Categorias extends Component
 
   // Forms
   public CadastroCategoria $categoriaCadastrar;
+  public CadastroItem $itemCadastrar;
   public EdicaoCategoria $categoriaEdicao;
 
   public function resetForms(): void
   {
     $this->categoriaCadastrar->reset();
     $this->categoriaEdicao->reset();
+    $this->itemCadastrar->reset();
     $this->resetErrorBag();
+
+    //imagens
+
+    $this->fotoTemporaria = null;
+    $this->fotoTemporariaEdicao = null;
 
     //tabs
 
     $this->tabSelecionada = 'detalhes';
+    $this->tabCadastroItemSelecionada = 'detalhes';
   }
 
   public function mount(int $cardapio_id): void
@@ -88,7 +120,6 @@ class Categorias extends Component
 
     $this->geraStats();
   }
-
 
   #[Layout('components.layouts.empresa')]
   #[Title('Categorias')]
@@ -222,7 +253,6 @@ class Categorias extends Component
       ->findOrFail($categoria_id)
       ->load(['tamanhos', 'massas', 'bordas']);
 
-
     if ($metodo === 'edicao') {
       $this->categoriaEdicao->fill($this->categoriaAtual->toArray());
       $this->drawerEdicaoCategoria = true;
@@ -243,6 +273,21 @@ class Categorias extends Component
       }
       $this->geraStats();
       $this->success('Alterado status da categoria com sucesso!');
+    }
+
+    if ($metodo === 'cadastro_item') {
+      if ($this->categoriaAtual->tipo === 'P') {
+        foreach ($this->categoriaAtual->tamanhos as $tamanho) {
+          $this->itemCadastrar->precos[] = [
+            'tamanho_id' => $tamanho->id,
+            'tamanho' => $tamanho->nome,
+            'status' => true,
+            'preco' => 0
+          ];
+        }
+      }
+      $this->drawerCadastroItem = true;
+      return;
     }
 
   }
@@ -293,6 +338,138 @@ class Categorias extends Component
     }
   }
 
+  /**
+   * @throws \Throwable
+   */
+  public function cadastraItem(): void
+  {
+    // Upload de imagem (uma única vez)
+    if (!empty($this->fotoTemporaria)) {
+      $this->itemCadastrar->imagem = $this->uploadImagem(getenv('MGC_BUCKET'), $this->fotoTemporaria);
+      $this->fotoTemporaria = null;
+    }
+
+    // Categoria de "itens principais"
+    if ($this->categoriaAtual->tipo === self::CATEGORIA_ITENS) {
+      $this->itemCadastrar->tipo_preco = self::PRECO_TIPO_FIXO;
+
+      // Validação e criação por tipo (PRE/BEB/IND)
+      $tipo = $this->itemCadastrar->tipo;
+      if (!in_array($tipo, [self::ITEM_PREPARADO, self::ITEM_BEBIDA, self::ITEM_INDUSTR], true)) {
+        $this->warning('Tipo de item inválido.');
+        return;
+      }
+
+      // Força o tipo esperado e valida
+      $this->itemCadastrar->tipo = $tipo;
+      $this->itemCadastrar->validate();
+
+      \Illuminate\Support\Facades\DB::transaction(function () use ($tipo) {
+        \App\Models\Item::query()->create($this->montarPayloadItemPorTipo($tipo));
+      });
+
+      // Fecha o drawer correto conforme o tipo
+      $resetMethods = [
+        self::ITEM_PREPARADO => 'resetaEstadoTotalDrawerCadastroItemPreparado',
+        self::ITEM_BEBIDA => 'resetaEstadoTotalDrawerCadastroItemBebida',
+        self::ITEM_INDUSTR => 'resetaEstadoTotalDrawerCadastroItemIndustrializado',
+      ];
+      if (isset($resetMethods[$tipo]) && method_exists($this, $resetMethods[$tipo])) {
+        $this->{$resetMethods[$tipo]}();
+      }
+
+      $this->success('Item cadastrado com sucesso');
+      $this->resetForms();
+      $this->drawerCadastroItem = false;
+      return;
+    }
+
+    // Categoria de pizza
+    if ($this->categoriaAtual->tipo === self::CATEGORIA_PIZZA) {
+      $this->itemCadastrar->tipo = self::ITEM_PIZZA;
+      $this->itemCadastrar->tipo_preco = self::PRECO_TIPO_POR_ITEM;
+
+      $this->itemCadastrar->validate();
+
+      \Illuminate\Support\Facades\DB::transaction(function () {
+        $item = \App\Models\Item::query()->create($this->montarPayloadItemPizza());
+        $precosValidos = array_values(array_filter(
+          $this->itemCadastrar->precos,
+          static fn($p) => ($p['status'] ?? false) && isset($p['tamanho_id']) && isset($p['preco'])
+        ));
+
+
+        if (!empty($precosValidos)) {
+          $payloadPrecos = array_map(fn($p) => [
+            'tamanho_id' => $p['tamanho_id'],
+            'preco' => $p['preco'],
+            'classificacao' => $this->itemCadastrar->classificacaoLimpa(),
+          ], $precosValidos);
+
+          $item->precosItemPizza()->createMany($payloadPrecos);
+        }
+      });
+
+      $this->success('Item cadastrado com sucesso');
+      $this->resetForms();
+      $this->drawerCadastroItem = false;
+      return;
+    }
+
+    $this->warning('Tipo de categoria inválido.');
+  }
+
+  /**
+   * Monta o payload do Item para categorias "itens principais" conforme o tipo.
+   */
+  private function montarPayloadItemPorTipo(string $tipo): array
+  {
+    $comum = [
+      'external_id' => $this->itemCadastrar->external_id,
+      'categoria_id' => $this->categoriaAtual->id,
+      'tipo' => $tipo,
+      'nome' => $this->itemCadastrar->nome,
+      'tipo_preco' => $this->itemCadastrar->tipo_preco,
+      'imagem' => $this->itemCadastrar->imagem,
+      'classificacao' => $this->itemCadastrar->classificacaoLimpa(),
+    ];
+
+    return match ($tipo) {
+      self::ITEM_PREPARADO => $comum + [
+          'preco' => $this->itemCadastrar->preco,
+          'desconto' => $this->itemCadastrar->desconto,
+          'valor_desconto' => $this->itemCadastrar->valor_desconto,
+          'porcentagem_desconto' => $this->itemCadastrar->porcentagem_desconto,
+          'descricao' => $this->itemCadastrar->descricao,
+          'qtde_pessoas' => $this->itemCadastrar->qtde_pessoas,
+          'peso' => $this->itemCadastrar->peso,
+          'gramagem' => $this->itemCadastrar->gramagem,
+          'eh_bebida' => $this->itemCadastrar->eh_bebida,
+        ],
+      self::ITEM_BEBIDA, self::ITEM_INDUSTR => $comum + [
+          'preco' => $this->itemCadastrar->preco,
+          'eh_bebida' => $this->itemCadastrar->eh_bebida,
+        ],
+      default => $comum,
+    };
+  }
+
+  /**
+   * Monta o payload do Item para categoria pizza (sem preço direto no item).
+   */
+  private function montarPayloadItemPizza(): array
+  {
+    return [
+      'external_id' => $this->itemCadastrar->external_id,
+      'categoria_id' => $this->categoriaAtual->id,
+      'tipo' => $this->itemCadastrar->tipo,         // PIZ
+      'nome' => $this->itemCadastrar->nome,
+      'descricao' => $this->itemCadastrar->descricao,
+      'tipo_preco' => $this->itemCadastrar->tipo_preco,   // preco_item
+      'imagem' => $this->itemCadastrar->imagem,
+      'classificacao' => $this->itemCadastrar->classificacaoLimpa(),
+    ];
+  }
 
   /**
    * Atualiza uma coleção de registros garantindo que pertencem à categoria atual
