@@ -49,11 +49,14 @@
             </div>
             <div class="flex items-center gap-3">
               <div class="flex items-center gap-2">
-                <x-toggle label="Ativo"/>
+                <x-toggle label="Ativo" :checked="!$categoria->trashed()"
+                          wire:key="categoria-toggle-{{ $categoria->id }}"
+                          wire:click="setCategoriaAtual({{ $categoria->id }}, 'ativacao')"/>
               </div>
               <x-button label="Editar" icon="o-pencil-square" class="btn btn-secondary"
                         wire:click="setCategoriaAtual({{ $categoria->id }}, 'edicao')"/>
-              <x-button label="Remover" icon="o-trash" class="btn btn-error" wire:click="setCategoriaAtual({{ $categoria->id }}, 'remocao')"/>
+              <x-button label="Remover" icon="o-trash" class="btn btn-error"
+                        wire:click="setCategoriaAtual({{ $categoria->id }}, 'remocao')"/>
             </div>
           </div>
         </div>
@@ -199,7 +202,8 @@
                              :options="$qtd_sabores" option-value="id" option-label="nome" height="max-h-96"/>
                   @if (count($categoriaCadastrar->tamanho) > 1)
                     <x-dropdown>
-                      <x-menu-item title="Remover" icon="o-trash" wire:click="removerCategoriaPropriedade('tamanho', {{ $chave }})"/>
+                      <x-menu-item title="Remover" icon="o-trash"
+                                   wire:click="removerCategoriaPropriedade('tamanho', {{ $chave }})"/>
                     </x-dropdown>
                   @endif
                 </div>
@@ -220,7 +224,8 @@
                            locale="pt-BR"/>
                   <x-input label="Código PDV" wire:model="categoriaCadastrar.massa.{{ $chave }}.external_id"/>
                   <x-dropdown>
-                    <x-menu-item title="Remover" icon="o-trash" wire:click="removerCategoriaPropriedade('massa', {{ $chave }})"/>
+                    <x-menu-item title="Remover" icon="o-trash"
+                                 wire:click="removerCategoriaPropriedade('massa', {{ $chave }})"/>
                   </x-dropdown>
                 </div>
               @endforeach
@@ -240,7 +245,8 @@
                            locale="pt-BR"/>
                   <x-input label="Código PDV" wire:model="categoriaCadastrar.borda.{{ $chave }}.external_id"/>
                   <x-dropdown>
-                    <x-menu-item title="Remover" icon="o-trash" wire:click="removerCategoriaPropriedade('borda', {{ $chave }})"/>
+                    <x-menu-item title="Remover" icon="o-trash"
+                                 wire:click="removerCategoriaPropriedade('borda', {{ $chave }})"/>
                   </x-dropdown>
                 </div>
               @endforeach
@@ -321,11 +327,13 @@
                   <h3 class="text-lg font-bold">Pizza</h3>
                 </div>
               </div>
-              <x-input placeholder="Ex: Marmitas, lanches, sorvetes..." wire:model="categoriaEdicao.nome" label="Nome da categoria" />
+              <x-input placeholder="Ex: Marmitas, lanches, sorvetes..." wire:model="categoriaEdicao.nome"
+                       label="Nome da categoria"/>
             </x-tab>
-            <x-tab name="tamanhos" label="Tamanhos" class="flex flex-col gap-4 h-[74vh] overflow-y-scroll" >
+            <x-tab name="tamanhos" label="Tamanhos" class="flex flex-col gap-4 h-[74vh] overflow-y-scroll">
               <h1 class="text-xl font-bold ">Tamanhos</h1>
-              <p class="text-base-content/50 text-sm mt-1 ">Indique aqui os tamanhos que suas pizzas são produzidas...</p>
+              <p class="text-base-content/50 text-sm mt-1 ">Indique aqui os tamanhos que suas pizzas são
+                produzidas...</p>
               <div class="flex flex-col gap-4">
                 @foreach ($categoriaEdicao->tamanhos as $chave => $tamanho)
                   <div class="grid grid-cols-1 sm:flex sm:grid-cols-none gap-4 items-end" wire:key="{{ $chave }}">
@@ -333,7 +341,8 @@
                     <x-input label="Cód. PDV" wire:model="categoriaEdicao.tamanhos.{{ $chave }}.external_id"/>
                     <x-input label="Nome" wire:model="categoriaEdicao.tamanhos.{{ $chave }}.nome"/>
                     <x-input label="Qtde. Pedaços" wire:model="categoriaEdicao.tamanhos.{{ $chave }}.qtde_pedacos"/>
-                    <x-choices label="Qtde. Sabores" wire:model.fill="categoriaEdicao.tamanhos.{{ $chave }}.qtde_sabores"
+                    <x-choices label="Qtde. Sabores"
+                               wire:model.fill="categoriaEdicao.tamanhos.{{ $chave }}.qtde_sabores"
                                :options="$qtd_sabores" option-value="id" option-label="nome"/>
                     @if (count($categoriaEdicao->tamanhos) > 1)
                       <x-dropdown>
@@ -405,7 +414,8 @@
         <x-button type="button" class="btn btn-error" @click="$wire.set('drawerEdicaoCategoria', false)"
                   label="Cancelar"/>
         @if($categoriaAtual->tipo === 'I')
-          <x-button class="btn btn-success" wire:click="editarCategoria" type="submit" label="Salvar" spinner="editarCategoria" wire:loading.attr="disabled"/>
+          <x-button class="btn btn-success" wire:click="editarCategoria" type="submit" label="Salvar"
+                    spinner="editarCategoria" wire:loading.attr="disabled"/>
         @endif
 
         @if($categoriaAtual->tipo === 'P')
@@ -423,7 +433,8 @@
                         @click="$wire.$set('tabSelecionada', 'bordas')"/>
               @break
             @case('bordas')
-              <x-button class="btn btn-success" type="button" label="Salvar" wire:click="editarCategoria" spinner="editarCategoria" wire:loading.attr="disabled"/>
+              <x-button class="btn btn-success" type="button" label="Salvar" wire:click="editarCategoria"
+                        spinner="editarCategoria" wire:loading.attr="disabled"/>
               @break
           @endswitch
         @endif

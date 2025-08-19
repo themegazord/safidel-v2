@@ -231,7 +231,20 @@ class Categorias extends Component
 
     if ($metodo === 'remocao') {
       $this->modalConfirmacaoRemocaoCategoria = true;
+      return;
     }
+
+    if ($metodo === 'ativacao') {
+      $categoria = $this->categorias->first(fn ($c) => $c->id === $categoria_id);
+      if ($categoria->trashed()) {
+        $categoria->restore();
+      } else {
+        $categoria->delete();
+      }
+      $this->geraStats();
+      $this->success('Alterado status da categoria com sucesso!');
+    }
+
   }
 
   public function adicionarCategoriaPropriedade(string $tipo, bool $edicao = false): void
