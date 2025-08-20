@@ -49,6 +49,8 @@ class Categorias extends Component
   private const PRECO_TIPO_FIXO = 'fixo';
   private const PRECO_TIPO_POR_ITEM = 'preco_item';
 
+  public ?string $tipoItemNormal = 'PRE';
+
   public int $cardapio_id;
   public Collection $categorias;
   public Empresa $empresa;
@@ -58,6 +60,17 @@ class Categorias extends Component
     ['id' => 2, 'nome' => 2],
     ['id' => 3, 'nome' => 3],
     ['id' => 4, 'nome' => 4],
+  ];
+  public array $qtd_pessoas = [
+    ['id' => null, 'name' => 'Não se aplica'],
+    ['id' => 1, 'name' => '1 pessoa.'],
+    ['id' => 2, 'name' => '2 pessoas.'],
+    ['id' => 3, 'name' => '3+ pessoas.'],
+  ];
+
+  public array $gramagem = [
+    ['valor' => 'g', 'label' => 'g'],
+    ['valor' => 'Kg', 'label' => 'Kg']
   ];
 
   // DTO
@@ -128,6 +141,16 @@ class Categorias extends Component
     return view('livewire.views.aplicacao.empresa.categorias');
   }
 
+  public function updating(string $props, mixed $valor): void {
+    if ($props === 'itemCadastrar.valor_desconto') {
+      $this->itemCadastrar->porcentagem_desconto = 100 - (($valor * 100) / $this->itemCadastrar->preco);
+    }
+
+    if ($props === 'itemCadastrar.porcentagem_desconto') {
+      $this->itemCadastrar->valor_desconto = $this->itemCadastrar->preco - (($valor * $this->itemCadastrar->preco) / 100);
+    }
+  }
+
   /**
    * @param int $cardapio_id
    * @return void
@@ -166,8 +189,8 @@ class Categorias extends Component
     \Illuminate\Support\Facades\DB::transaction(function () {
       $categoria = \App\Models\Categoria::query()->create([
         'cardapio_id' => $this->cardapio_id,
-        'tipo'        => $this->categoriaCadastrar->tipo,
-        'nome'        => $this->categoriaCadastrar->nome,
+        'tipo' => $this->categoriaCadastrar->tipo,
+        'nome' => $this->categoriaCadastrar->nome,
       ]);
 
       if ($this->categoriaCadastrar->tipo !== "P") {
@@ -239,14 +262,14 @@ class Categorias extends Component
     $this->reloadItens();
   }
 
-  public function removerCategoria(): void {
+  public function removerCategoria(): void
+  {
     $this->categoriaAtual->forceDelete();
     $this->success('Categoria removida com sucesso!');
     $this->resetForms();
     $this->reloadItens();
     $this->modalConfirmacaoRemocaoCategoria = false;
   }
-
   public function setCategoriaAtual(int $categoria_id, string $metodo): void
   {
     $this->categoriaAtual = Categoria::withTrashed()
@@ -265,7 +288,7 @@ class Categorias extends Component
     }
 
     if ($metodo === 'ativacao') {
-      $categoria = $this->categorias->first(fn ($c) => $c->id === $categoria_id);
+      $categoria = $this->categorias->first(fn($c) => $c->id === $categoria_id);
       if ($categoria->trashed()) {
         $categoria->restore();
       } else {
@@ -296,16 +319,16 @@ class Categorias extends Component
   {
     $defaults = match ($tipo) {
       'tamanhos' => ['nome' => $edicao ? 'Tamanho novo' : '', 'qtde_pedacos' => 1, 'qtde_sabores' => [1]],
-      'massas'   => ['nome' => $edicao ? 'Massa novo' : '', 'external_id' => null, 'preco' => 0],
-      'bordas'   => ['nome' => $edicao ? 'Borda novo' : '', 'external_id' => null, 'preco' => 0],
-      default   => throw new \InvalidArgumentException("Tipo inválido: {$tipo}"),
+      'massas' => ['nome' => $edicao ? 'Massa novo' : '', 'external_id' => null, 'preco' => 0],
+      'bordas' => ['nome' => $edicao ? 'Borda novo' : '', 'external_id' => null, 'preco' => 0],
+      default => throw new \InvalidArgumentException("Tipo inválido: {$tipo}"),
     };
 
     if ($edicao) {
       $modelClass = match ($tipo) {
         'tamanhos' => \App\Models\CategoriaTamanho::class,
-        'massas'   => \App\Models\CategoriaMassa::class,
-        'bordas'   => \App\Models\CategoriaBorda::class,
+        'massas' => \App\Models\CategoriaMassa::class,
+        'bordas' => \App\Models\CategoriaBorda::class,
       };
 
       $novo = $modelClass::create([
@@ -327,8 +350,8 @@ class Categorias extends Component
     if ($id) {
       $relacao = match ($tipo) {
         'tamanhos' => $this->categoriaAtual->tamanhos,
-        'massas'   => $this->categoriaAtual->massas,
-        'bordas'   => $this->categoriaAtual->bordas,
+        'massas' => $this->categoriaAtual->massas,
+        'bordas' => $this->categoriaAtual->bordas,
       };
 
       $relacao->find($id)?->delete();
@@ -336,6 +359,19 @@ class Categorias extends Component
     } else {
       unset($this->categoriaCadastrar->{$tipo}[$chave]);
     }
+  }
+
+  public function setTipoItemNormalParaCadastro(string $tipo): void
+  {
+    $this->tipoItemNormal = $tipo;
+
+    $this->drawerCadastroItem = false;
+
+    match ($tipo) {
+      self::ITEM_PREPARADO => $this->drawerCadastroItemPreparado = true,
+      self::ITEM_BEBIDA => $this->drawerCadastroBebida = true,
+      self::ITEM_INDUSTR => $this->drawerCadastroItemIndustrializado = true,
+    };
   }
 
   /**
@@ -354,7 +390,7 @@ class Categorias extends Component
       $this->itemCadastrar->tipo_preco = self::PRECO_TIPO_FIXO;
 
       // Validação e criação por tipo (PRE/BEB/IND)
-      $tipo = $this->itemCadastrar->tipo;
+      $tipo = $this->itemCadastrar->tipo = $this->tipoItemNormal;
       if (!in_array($tipo, [self::ITEM_PREPARADO, self::ITEM_BEBIDA, self::ITEM_INDUSTR], true)) {
         $this->warning('Tipo de item inválido.');
         return;
@@ -369,18 +405,24 @@ class Categorias extends Component
       });
 
       // Fecha o drawer correto conforme o tipo
-      $resetMethods = [
-        self::ITEM_PREPARADO => 'resetaEstadoTotalDrawerCadastroItemPreparado',
-        self::ITEM_BEBIDA => 'resetaEstadoTotalDrawerCadastroItemBebida',
-        self::ITEM_INDUSTR => 'resetaEstadoTotalDrawerCadastroItemIndustrializado',
+      $resetDrawers = [
+        self::ITEM_PREPARADO => 'drawerCadastroItemPreparado',
+        self::ITEM_BEBIDA => 'drawerCadastroBebida',
+        self::ITEM_INDUSTR => 'drawerCadastroItemIndustrializado',
       ];
-      if (isset($resetMethods[$tipo]) && method_exists($this, $resetMethods[$tipo])) {
-        $this->{$resetMethods[$tipo]}();
-      }
 
+      // Supondo que $tipo contenha o tipo válido usado na criação
+      if (isset($resetDrawers[$tipo])) {
+        $drawerProp = $resetDrawers[$tipo];
+        if (property_exists($this, $drawerProp)) {
+          $this->{$drawerProp} = false;
+        }
+      }
+      $this->tipoItemNormal = 'PRE';
+      $this->drawerCadastroItem = false;
       $this->success('Item cadastrado com sucesso');
       $this->resetForms();
-      $this->drawerCadastroItem = false;
+
       return;
     }
 
@@ -417,6 +459,33 @@ class Categorias extends Component
     }
 
     $this->warning('Tipo de categoria inválido.');
+  }
+
+  public function alterarStatusItem(int $item_id): void {
+    // Tenta pegar em memória dentro de $this->categorias (já carregadas)
+    $item = $this->categorias
+      ->flatMap(fn ($categoria) => $categoria->itens)
+      ->firstWhere('id', $item_id);
+
+    // Se não encontrado, faz fallback ao banco, limitado às categorias visíveis
+    if (!$item) {
+      $categoriaIds = $this->categorias->pluck('id');
+      $item = \App\Models\Item::withTrashed()
+        ->whereIn('categoria_id', $categoriaIds)
+        ->findOrFail($item_id);
+    }
+
+    // Alterna status via SoftDeletes
+    if ($item->trashed()) {
+      $item->restore();
+      $this->success('Item ativado com sucesso!');
+    } else {
+      $item->delete();
+      $this->success('Item inativado com sucesso!');
+    }
+
+    // Atualiza listas e métricas exibidas
+    $this->reloadItens();
   }
 
   /**
