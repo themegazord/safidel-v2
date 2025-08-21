@@ -3,23 +3,24 @@
 namespace App\Livewire\Views\Aplicacao\Empresa;
 
 use AllowDynamicProperties;
-use App\Models\Cardapio;
 use App\Models\Categoria;
-use App\Models\CategoriaBorda;
-use App\Models\CategoriaMassa;
-use App\Models\CategoriaTamanho;
 use App\Models\Empresa;
+use App\Models\GrupoComplemento;
 use App\Models\Item;
 use App\TrataMGCObjectStoreTrait;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
 use App\Livewire\Forms\Cardapio\Categoria\CadastroForm as CadastroCategoria;
 use App\Livewire\Forms\Cardapio\Item\CadastroForm as CadastroItem;
+use App\Livewire\Forms\Cardapio\Item\GrupoComplemento\CadastroForm as CadastroGrupoComplementoItem;
 use App\Livewire\Forms\Cardapio\Categoria\EdicaoForm as EdicaoCategoria;
+use App\Livewire\Forms\Cardapio\Item\EdicaoForm as EdicaoItem;
+use App\Livewire\Forms\Cardapio\Item\GrupoComplemento\EdicaoForm as EdicaoGrupoComplementoItem;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
 use Mary\Traits\Toast;
@@ -75,22 +76,26 @@ class Categorias extends Component
 
   // DTO
   public ?Categoria $categoriaAtual = null;
+  public ?Item $itemAtual = null;
+  public ?GrupoComplemento $grupoComplementoAtual = null;
 
   // Modal
   public bool $modalConfirmacaoRemocaoCategoria = false;
+  public bool $modalConfirmacaoClonarItem = false;
+  public bool $modalConfirmacaoRemocaoItem = false;
+
+  // Copia de complementos
+  public bool $copia_complemento = false;
+  public ?int $categoriaSelecionadaCopiaComplemento = null;
+  public ?int $itemSelecionadoCopiaComplemento = null;
 
   // Drawers
   public bool $drawerEdicaoCategoria = false;
   public bool $drawerCadastroCategoria = false;
   public bool $drawerCadastroItem = false;
-  public bool $drawerCadastroItemPreparado = false;
-  public bool $drawerCadastroBebida = false;
-  public bool $drawerCadastroItemIndustrializado = false;
   public bool $drawerCadastroComplementoItem = false;
   public bool $drawerEdicaoComplementoItem = false;
-  public bool $drawerEdicaoItemPreparado = false;
-  public bool $drawerEdicaoItemBebida = false;
-  public bool $drawerEdicaoItemIndustrializado = false;
+  public bool $drawerEdicaoItem = false;
   public bool $drawerEdicaoItemPizza = false;
 
   // Tabs
@@ -106,12 +111,16 @@ class Categorias extends Component
   public CadastroCategoria $categoriaCadastrar;
   public CadastroItem $itemCadastrar;
   public EdicaoCategoria $categoriaEdicao;
+  public EdicaoItem $itemEditar;
+  public CadastroGrupoComplementoItem $grupoComplementoCadastro;
+  public EdicaoGrupoComplementoItem $grupoComplementoEdicao;
 
   public function resetForms(): void
   {
     $this->categoriaCadastrar->reset();
     $this->categoriaEdicao->reset();
     $this->itemCadastrar->reset();
+    $this->itemEditar->reset();
     $this->resetErrorBag();
 
     //imagens
@@ -119,10 +128,26 @@ class Categorias extends Component
     $this->fotoTemporaria = null;
     $this->fotoTemporariaEdicao = null;
 
+    // modal
+
+    $this->itemAtual = null;
+    $this->categoriaAtual = null;
+
     //tabs
 
     $this->tabSelecionada = 'detalhes';
     $this->tabCadastroItemSelecionada = 'detalhes';
+  }
+
+  public function resetFormGrupoComplemento(): void
+  {
+    $this->grupoComplementoCadastro->reset();
+    $this->grupoComplementoEdicao->reset();
+    $this->grupoComplementoCadastro->resetValidation();
+    $this->grupoComplementoEdicao->resetValidation();
+
+    $this->tabCadastroItemComplemento = 'detalhes';
+    $this->tabEdicaoItemComplemento = 'detalhes';
   }
 
   public function mount(int $cardapio_id): void
@@ -270,7 +295,7 @@ class Categorias extends Component
     $this->reloadItens();
     $this->modalConfirmacaoRemocaoCategoria = false;
   }
-  public function setCategoriaAtual(int $categoria_id, string $metodo): void
+  public function setCategoriaAtual(int $categoria_id, ?string $metodo = null): void
   {
     $this->categoriaAtual = Categoria::withTrashed()
       ->findOrFail($categoria_id)
@@ -486,6 +511,350 @@ class Categorias extends Component
 
     // Atualiza listas e métricas exibidas
     $this->reloadItens();
+  }
+
+  public function setItemAtual(int $item_id, int $categoria_id, string $metodo): void {
+
+    // Carrega item com dependências usadas no fill
+    $this->itemAtual = \App\Models\Item::withTrashed()
+      ->with(['categoria', 'precosItemPizza', 'grupo_complemento.complementos'])
+      ->findOrFail($item_id);
+
+    // Garante categoria atual
+    $this->setCategoriaAtual($categoria_id);
+
+    // Normaliza classificação para o formato do formulário de edição
+    $slugs = [
+      'vegetariano','vegano','organico','sem-acucar','zero_lactose',
+      'bebida_gelada','bebida_alcolica','bebida_natural','zero_lactose','bebida_diet'
+    ];
+    $ativos = collect($this->itemAtual->classificacao ?? [])->values()->all();
+    $classificacaoForm = array_map(
+      static fn($slug) => ['nome' => $slug, 'status' => in_array($slug, $ativos, true)],
+      $slugs
+    );
+
+    // Prepara preços para pizza no formato esperado pelo form (quando aplicável)
+    $precosForm = [];
+    if ($this->itemAtual->tipo === 'PIZ') {
+      $precosForm = $this->itemAtual->precosItemPizza
+        ->map(fn($p) => [
+          'tamanho_id' => $p->tamanho_id,
+          'tamanho' => $p->tamanho->nome,
+          'preco' => $p->preco,
+          'status' => true,
+        ])
+        ->values()
+        ->all();
+    }
+
+    // Monta payload para o form itemEditar
+    $payload = [
+      'external_id' => $this->itemAtual->external_id,
+      'categoria_id' => $this->itemAtual->categoria_id,
+      'inativo' => $this->itemAtual->trashed(),
+      'nome' => $this->itemAtual->nome,
+      'tipo' => $this->itemAtual->tipo,
+      'descricao' => $this->itemAtual->descricao,
+      'preco' => $this->itemAtual->preco,
+      'desconto' => (bool) $this->itemAtual->desconto,
+      'valor_desconto' => $this->itemAtual->valor_desconto,
+      'porcentagem_desconto' => $this->itemAtual->porcentagem_desconto,
+      'contem_complemento' => $this->itemAtual->grupo_complemento()->exists(),
+      'grupo_complemento' => $this->itemAtual->grupo_complemento
+        ->map(fn($g) => [
+          'id' => $g->id,
+          'nome' => $g->nome ?? null,
+          'min' => $g->min ?? null,
+          'max' => $g->max ?? null,
+          'complementos' => $g->complementos
+            ->map(fn($c) => [
+              'id' => $c->id,
+              'nome' => $c->nome ?? null,
+              'preco' => $c->preco ?? null,
+            ])->values()->all(),
+        ])->values()->all(),
+      'tipo_preco' => $this->itemAtual->tipo_preco,
+      'qtde_pessoas' => $this->itemAtual->qtde_pessoas,
+      'peso' => $this->itemAtual->peso,
+      'gramagem' => $this->itemAtual->gramagem,
+      'eh_bebida' => (bool) $this->itemAtual->eh_bebida,
+      'imagem' => $this->itemAtual->imagem,
+      'classificacao' => $classificacaoForm,
+      'precos' => $precosForm,
+    ];
+
+    if ($metodo === 'clonar') {
+      $this->setCategoriaAtual($categoria_id);
+      $this->modalConfirmacaoClonarItem = true;
+    }
+
+    if ($metodo === 'remover') {
+      $this->modalConfirmacaoRemocaoItem = true;
+    }
+
+    if ($metodo === 'editar') {
+      // Preenche o form de edição (itemEditar)
+      if (property_exists($this, 'itemEditar') && method_exists($this->itemEditar, 'fill')) {
+        $this->itemEditar->fill($payload);
+      }
+
+      $this->drawerEdicaoItem = true;
+    }
+  }
+
+  public function clonarItem(): void
+  {
+    \DB::transaction(function () {
+      // Clona e salva o novo item
+      $itemDuplicado = $this->itemAtual->replicate();
+      $itemDuplicado->save();
+
+      // Clona estruturas relacionadas conforme o tipo
+      if ($this->itemAtual->tipo === 'PRE' && !$this->itemAtual->grupo_complemento->isEmpty()) {
+        foreach ($this->itemAtual->grupo_complemento as $grupo) {
+          $grupoDuplicado = $grupo->replicate()->fill([
+            'item_id' => $itemDuplicado->id
+          ]);
+          $grupoDuplicado->save();
+
+          if (!$grupo->complementos->isEmpty()) {
+            foreach ($grupo->complementos as $complemento) {
+              $complementoDuplicado = $complemento->replicate()->fill([
+                'grupo_id' => $grupoDuplicado->id,
+              ]);
+              $complementoDuplicado->save();
+            }
+          }
+        }
+      }
+
+      if ($this->categoriaAtual->tipo === 'P') {
+        foreach ($this->itemAtual->precosItemPizza as $preco) {
+          $precoDuplicado = $preco->replicate()->fill([
+            'item_id' => $itemDuplicado->id
+          ]);
+          $precoDuplicado->save();
+        }
+      }
+
+      // Inativa o item clonado (soft delete) após concluir a clonagem
+      $itemDuplicado->delete();
+    });
+
+    $this->success('Item duplicado com sucesso');
+    $this->modalConfirmacaoClonarItem = false;
+  }
+
+  public function removerItem(): void {
+    DB::transaction(function () {
+      $this->itemAtual->forceDelete();
+    });
+
+    $this->success('Item removido com sucesso');
+    $this->modalConfirmacaoRemocaoItem = false;
+    $this->reloadItens();
+  }
+
+  public function editarItem(): void
+  {
+    // Normaliza campos dependentes do tipo/discount do formulário de edição
+    if (method_exists($this->itemEditar, 'normalizarCampos')) {
+      $this->itemEditar->normalizarCampos();
+    }
+
+    \Illuminate\Support\Facades\DB::transaction(function () {
+      // Alterna soft delete conforme flag "inativo"
+      if (($this->itemEditar->inativo ?? false) && !$this->itemAtual->trashed()) {
+        $this->itemAtual->delete();
+      } elseif (!($this->itemEditar->inativo ?? false) && $this->itemAtual->trashed()) {
+        $this->itemAtual->restore();
+      }
+
+      // Atualiza dados principais do item
+      \App\Models\Item::withTrashed()
+        ->whereKey($this->itemAtual->id)
+        ->update([
+          'imagem' => $this->itemEditar->imagem,
+          'external_id' => $this->itemEditar->external_id,
+          'categoria_id' => $this->categoriaAtual->id,
+          'nome' => $this->itemEditar->nome,
+          'preco' => $this->itemEditar->preco,
+          'desconto' => $this->itemEditar->desconto,
+          'valor_desconto' => $this->itemEditar->valor_desconto,
+          'porcentagem_desconto' => $this->itemEditar->porcentagem_desconto,
+          'descricao' => $this->itemEditar->descricao,
+          'qtde_pessoas' => $this->itemEditar->qtde_pessoas,
+          'peso' => $this->itemEditar->peso,
+          'gramagem' => $this->itemEditar->gramagem,
+          'eh_bebida' => $this->itemEditar->eh_bebida,
+          'classificacao' => $this->itemEditar->classificacaoLimpa(),
+        ]);
+
+      // Atualiza preços por tamanho (PIZ)
+      if ($this->itemAtual->tipo === 'PIZ') {
+        foreach ($this->itemEditar->precos as $preco) {
+          $query = \App\Models\ItemPreco::query()->where('item_id', $this->itemAtual->id);
+
+          // Se houver id, usa a PK; senão, usa tamanho_id como fallback
+          if (!empty($preco['id'] ?? null)) {
+            $query->whereKey($preco['id']);
+          } else {
+            $query->where('tamanho_id', $preco['tamanho_id'] ?? null);
+          }
+
+          $query->update([
+            'status' => (bool)($preco['status'] ?? false),
+            'preco' => (float)($preco['preco'] ?? 0),
+            'classificacao' => $this->itemEditar->classificacaoLimpa(),
+          ]);
+        }
+      }
+    });
+
+    // Limpa estado temporário e fecha drawer
+    $this->fotoTemporariaEdicao = null;
+    $this->drawerEdicaoItem = false;
+
+    $this->success('Item atualizado com sucesso');
+    $this->reloadItens();
+  }
+
+  public function preparaCadastroGrupoComplementos(): void
+  {
+
+    $this->adicionarComplementoNoGrupoComplemento('cadastro');
+
+    $this->tabCadastroItemComplemento = 'detalhes';
+
+    $this->drawerCadastroComplementoItem = true;
+  }
+
+  public function adicionarComplementoNoGrupoComplemento(string $metodo): void
+  {
+    // Delegamos a inclusão ao método do Form
+    match ($metodo) {
+      'cadastro' => $this->grupoComplementoCadastro->adicionarComplemento(),
+      'edicao' => $this->grupoComplementoEdicao->adicionarComplemento(),
+    };
+  }
+
+  public function removeComplementoNoGrupoComplemento(int $indice, string $metodo): void {
+    match ($metodo) {
+      'cadastro' => $this->grupoComplementoCadastro->removerComplemento($indice),
+      'edicao' => $this->grupoComplementoEdicao->removerComplemento($indice),
+    };
+    $this->success('Complemento removido com sucesso');
+  }
+
+  public function finalizarCadastroGrupoComponentes(): void
+  {
+    // Normaliza e valida o form antes de persistir
+    if (method_exists($this->grupoComplementoCadastro, 'normalizar')) {
+      $this->grupoComplementoCadastro->normalizar();
+    }
+
+    $this->grupoComplementoCadastro->validate();
+
+    \Illuminate\Support\Facades\DB::transaction(function () {
+      // Cria via relação do item atual (sem precisar informar item_id manualmente)
+      $grupo = $this->itemAtual->grupo_complemento()->create([
+        'nome'             => $this->grupoComplementoCadastro->nome,
+        'obrigatoriedade'  => (bool) $this->grupoComplementoCadastro->obrigatoriedade,
+        'qtd_minima'       => $this->grupoComplementoCadastro->qtd_minima,
+        'qtd_maxima'       => $this->grupoComplementoCadastro->qtd_maxima,
+      ]);
+
+      // Mapeia os complementos e cria em lote pela relação
+      $payloadComplementos = array_map(static function (array $c): array {
+        return [
+          'external_id' => $c['external_id'] ?? null,
+          'nome'        => $c['nome'] ?? '',
+          'descricao'   => $c['descricao'] ?? null,
+          'preco'       => isset($c['preco']) ? (float) $c['preco'] : 0.0,
+          'status'      => isset($c['status']) ? (int) $c['status'] : 1,
+        ];
+      }, $this->grupoComplementoCadastro->complementos);
+
+      if (!empty($payloadComplementos)) {
+        $grupo->complementos()->createMany($payloadComplementos);
+      }
+    });
+
+    $this->drawerCadastroComplementoItem = false;
+    $this->success('Grupo de complementos registrado com sucesso.');
+    $this->resetFormGrupoComplemento();
+    $this->reloadItens();
+  }
+
+  public function finalizarEdicaoGrupoComponentes(): void
+  {
+    \Illuminate\Support\Facades\DB::transaction(function () {
+      // Atualiza o grupo em memória e persiste somente se houver mudanças
+      $this->grupoComplementoAtual->fill([
+        'nome'            => $this->grupoComplementoEdicao->nome,
+        'obrigatoriedade' => (bool) $this->grupoComplementoEdicao->obrigatoriedade,
+        'qtd_maxima'      => (int) ($this->grupoComplementoEdicao->qtd_maxima ?? 0),
+      ]);
+      if ($this->grupoComplementoAtual->isDirty()) {
+        $this->grupoComplementoAtual->save();
+      }
+
+      // Índice dos complementos atuais (em memória) por id
+      $atuais = $this->grupoComplementoAtual->complementos->keyBy('id');
+
+      // IDs que permanecerão após a edição (para remoção dos que saíram)
+      $idsMantidos = [];
+
+      foreach ($this->grupoComplementoEdicao->complementos as $comp) {
+        $payload = [
+          'external_id' => $comp['external_id'] ?? null,
+          'nome'        => $comp['nome'] ?? '',
+          'descricao'   => $comp['descricao'] ?? null,
+          'preco'       => isset($comp['preco']) ? (float) $comp['preco'] : 0.0,
+          'status'      => isset($comp['status']) ? (int) $comp['status'] : 1,
+        ];
+
+        // Novo complemento (sem id): cria via relação (sem consultar novamente)
+        if (empty($comp['id'])) {
+          $novo = $this->grupoComplementoAtual->complementos()->create($payload);
+          $idsMantidos[] = $novo->id;
+          continue;
+        }
+
+        // Existente: atualiza o modelo em memória e salva somente se houve mudança
+        $modelo = $atuais->get($comp['id']);
+        if ($modelo) {
+          $modelo->fill($payload);
+          if ($modelo->isDirty()) {
+            $modelo->save();
+          }
+          $idsMantidos[] = $modelo->id;
+        }
+        // Se não achar em $atuais, ignora silenciosamente (ou poderia criar/lançar erro conforme regra)
+      }
+
+      // Remove complementos que não estão mais na edição (diferença em memória)
+      $idsAtuais = $this->grupoComplementoAtual->complementos->pluck('id')->all();
+      $idsParaRemover = array_diff($idsAtuais, $idsMantidos);
+      if (!empty($idsParaRemover)) {
+        $this->grupoComplementoAtual->complementos()
+          ->whereIn('id', $idsParaRemover)
+          ->delete();
+      }
+    });
+
+    $this->drawerEdicaoComplementoItem = false;
+    $this->success('Grupo de complementos salvo com sucesso.');
+    $this->resetFormGrupoComplemento();
+    $this->reloadItens();
+  }
+
+  public function setEdicaoGrupoComplemento(int $grupo_id): void {
+    $this->grupoComplementoAtual = $this->itemAtual->grupo_complemento()->where('id', $grupo_id)->first();
+    $this->grupoComplementoEdicao->fill($this->grupoComplementoAtual->toArray());
+    $this->grupoComplementoEdicao->alimentaComplementos($this->grupoComplementoAtual->complementos);
+    $this->drawerEdicaoComplementoItem = true;
   }
 
   /**
