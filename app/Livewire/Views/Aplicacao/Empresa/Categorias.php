@@ -83,11 +83,11 @@ class Categorias extends Component
   public bool $modalConfirmacaoRemocaoCategoria = false;
   public bool $modalConfirmacaoClonarItem = false;
   public bool $modalConfirmacaoRemocaoItem = false;
+  public bool $modalConfirmacaoRemocaoGrupoComplemento = false;
 
   // Copia de complementos
   public bool $copia_complemento = false;
-  public ?int $categoriaSelecionadaCopiaComplemento = null;
-  public ?int $itemSelecionadoCopiaComplemento = null;
+  public ?int $categoriaSelecionadaCopiaComplemento, $itemSelecionadoCopiaComplemento = null;
 
   // Drawers
   public bool $drawerEdicaoCategoria = false;
@@ -166,7 +166,8 @@ class Categorias extends Component
     return view('livewire.views.aplicacao.empresa.categorias');
   }
 
-  public function updating(string $props, mixed $valor): void {
+  public function updating(string $props, mixed $valor): void
+  {
     if ($props === 'itemCadastrar.valor_desconto') {
       $this->itemCadastrar->porcentagem_desconto = 100 - (($valor * 100) / $this->itemCadastrar->preco);
     }
@@ -182,23 +183,23 @@ class Categorias extends Component
    */
   public function carregaCategorias(int $cardapio_id): void
   {
-    $cardapio = $this->empresa->cardapios()->findOrFail($cardapio_id)
-      ->with([
-        'categorias' => function ($q) {
-          $q->withTrashed()
-            ->with([
-              'tamanhos',
-              'massas',
-              'bordas',
-              'itens',
-              'itens.precosItemPizza',
-            ]);
-        },
-      ])
-      ->findOrFail($cardapio_id);
+    // Garante que o cardápio pertence à empresa, sem carregar relações desnecessárias
+    $this->empresa->cardapios()->whereKey($cardapio_id)->firstOrFail();
 
-    // Categorias já vieram com withTrashed e com as relações carregadas
-    $this->categorias = $cardapio->categorias;
+    // Carrega as categorias do cardápio com todas as relações necessárias
+    $this->categorias = \App\Models\Categoria::withTrashed()
+      ->where('cardapio_id', $cardapio_id)
+      ->with([
+        'tamanhos',
+        'massas',
+        'bordas',
+        // Itens com preços de pizza e grupos + complementos (sem N+1)
+        'itens' => fn($q) => $q->with([
+          'precosItemPizza',
+          'grupo_complemento.complementos',
+        ]),
+      ])
+      ->get();
   }
 
   public function cadastrarCategoria(): void
@@ -295,6 +296,7 @@ class Categorias extends Component
     $this->reloadItens();
     $this->modalConfirmacaoRemocaoCategoria = false;
   }
+
   public function setCategoriaAtual(int $categoria_id, ?string $metodo = null): void
   {
     $this->categoriaAtual = Categoria::withTrashed()
@@ -486,10 +488,11 @@ class Categorias extends Component
     $this->warning('Tipo de categoria inválido.');
   }
 
-  public function alterarStatusItem(int $item_id): void {
+  public function alterarStatusItem(int $item_id): void
+  {
     // Tenta pegar em memória dentro de $this->categorias (já carregadas)
     $item = $this->categorias
-      ->flatMap(fn ($categoria) => $categoria->itens)
+      ->flatMap(fn($categoria) => $categoria->itens)
       ->firstWhere('id', $item_id);
 
     // Se não encontrado, faz fallback ao banco, limitado às categorias visíveis
@@ -513,7 +516,8 @@ class Categorias extends Component
     $this->reloadItens();
   }
 
-  public function setItemAtual(int $item_id, int $categoria_id, string $metodo): void {
+  public function setItemAtual(int $item_id, int $categoria_id, string $metodo): void
+  {
 
     // Carrega item com dependências usadas no fill
     $this->itemAtual = \App\Models\Item::withTrashed()
@@ -525,8 +529,8 @@ class Categorias extends Component
 
     // Normaliza classificação para o formato do formulário de edição
     $slugs = [
-      'vegetariano','vegano','organico','sem-acucar','zero_lactose',
-      'bebida_gelada','bebida_alcolica','bebida_natural','zero_lactose','bebida_diet'
+      'vegetariano', 'vegano', 'organico', 'sem-acucar', 'zero_lactose',
+      'bebida_gelada', 'bebida_alcolica', 'bebida_natural', 'zero_lactose', 'bebida_diet'
     ];
     $ativos = collect($this->itemAtual->classificacao ?? [])->values()->all();
     $classificacaoForm = array_map(
@@ -557,7 +561,7 @@ class Categorias extends Component
       'tipo' => $this->itemAtual->tipo,
       'descricao' => $this->itemAtual->descricao,
       'preco' => $this->itemAtual->preco,
-      'desconto' => (bool) $this->itemAtual->desconto,
+      'desconto' => (bool)$this->itemAtual->desconto,
       'valor_desconto' => $this->itemAtual->valor_desconto,
       'porcentagem_desconto' => $this->itemAtual->porcentagem_desconto,
       'contem_complemento' => $this->itemAtual->grupo_complemento()->exists(),
@@ -578,7 +582,7 @@ class Categorias extends Component
       'qtde_pessoas' => $this->itemAtual->qtde_pessoas,
       'peso' => $this->itemAtual->peso,
       'gramagem' => $this->itemAtual->gramagem,
-      'eh_bebida' => (bool) $this->itemAtual->eh_bebida,
+      'eh_bebida' => (bool)$this->itemAtual->eh_bebida,
       'imagem' => $this->itemAtual->imagem,
       'classificacao' => $classificacaoForm,
       'precos' => $precosForm,
@@ -646,7 +650,8 @@ class Categorias extends Component
     $this->modalConfirmacaoClonarItem = false;
   }
 
-  public function removerItem(): void {
+  public function removerItem(): void
+  {
     DB::transaction(function () {
       $this->itemAtual->forceDelete();
     });
@@ -739,7 +744,8 @@ class Categorias extends Component
     };
   }
 
-  public function removeComplementoNoGrupoComplemento(int $indice, string $metodo): void {
+  public function removeComplementoNoGrupoComplemento(int $indice, string $metodo): void
+  {
     match ($metodo) {
       'cadastro' => $this->grupoComplementoCadastro->removerComplemento($indice),
       'edicao' => $this->grupoComplementoEdicao->removerComplemento($indice),
@@ -759,20 +765,20 @@ class Categorias extends Component
     \Illuminate\Support\Facades\DB::transaction(function () {
       // Cria via relação do item atual (sem precisar informar item_id manualmente)
       $grupo = $this->itemAtual->grupo_complemento()->create([
-        'nome'             => $this->grupoComplementoCadastro->nome,
-        'obrigatoriedade'  => (bool) $this->grupoComplementoCadastro->obrigatoriedade,
-        'qtd_minima'       => $this->grupoComplementoCadastro->qtd_minima,
-        'qtd_maxima'       => $this->grupoComplementoCadastro->qtd_maxima,
+        'nome' => $this->grupoComplementoCadastro->nome,
+        'obrigatoriedade' => (bool)$this->grupoComplementoCadastro->obrigatoriedade,
+        'qtd_minima' => $this->grupoComplementoCadastro->qtd_minima,
+        'qtd_maxima' => $this->grupoComplementoCadastro->qtd_maxima,
       ]);
 
       // Mapeia os complementos e cria em lote pela relação
       $payloadComplementos = array_map(static function (array $c): array {
         return [
           'external_id' => $c['external_id'] ?? null,
-          'nome'        => $c['nome'] ?? '',
-          'descricao'   => $c['descricao'] ?? null,
-          'preco'       => isset($c['preco']) ? (float) $c['preco'] : 0.0,
-          'status'      => isset($c['status']) ? (int) $c['status'] : 1,
+          'nome' => $c['nome'] ?? '',
+          'descricao' => $c['descricao'] ?? null,
+          'preco' => isset($c['preco']) ? (float)$c['preco'] : 0.0,
+          'status' => isset($c['status']) ? (int)$c['status'] : 1,
         ];
       }, $this->grupoComplementoCadastro->complementos);
 
@@ -792,9 +798,9 @@ class Categorias extends Component
     \Illuminate\Support\Facades\DB::transaction(function () {
       // Atualiza o grupo em memória e persiste somente se houver mudanças
       $this->grupoComplementoAtual->fill([
-        'nome'            => $this->grupoComplementoEdicao->nome,
-        'obrigatoriedade' => (bool) $this->grupoComplementoEdicao->obrigatoriedade,
-        'qtd_maxima'      => (int) ($this->grupoComplementoEdicao->qtd_maxima ?? 0),
+        'nome' => $this->grupoComplementoEdicao->nome,
+        'obrigatoriedade' => (bool)$this->grupoComplementoEdicao->obrigatoriedade,
+        'qtd_maxima' => (int)($this->grupoComplementoEdicao->qtd_maxima ?? 0),
       ]);
       if ($this->grupoComplementoAtual->isDirty()) {
         $this->grupoComplementoAtual->save();
@@ -809,10 +815,10 @@ class Categorias extends Component
       foreach ($this->grupoComplementoEdicao->complementos as $comp) {
         $payload = [
           'external_id' => $comp['external_id'] ?? null,
-          'nome'        => $comp['nome'] ?? '',
-          'descricao'   => $comp['descricao'] ?? null,
-          'preco'       => isset($comp['preco']) ? (float) $comp['preco'] : 0.0,
-          'status'      => isset($comp['status']) ? (int) $comp['status'] : 1,
+          'nome' => $comp['nome'] ?? '',
+          'descricao' => $comp['descricao'] ?? null,
+          'preco' => isset($comp['preco']) ? (float)$comp['preco'] : 0.0,
+          'status' => isset($comp['status']) ? (int)$comp['status'] : 1,
         ];
 
         // Novo complemento (sem id): cria via relação (sem consultar novamente)
@@ -850,11 +856,113 @@ class Categorias extends Component
     $this->reloadItens();
   }
 
-  public function setEdicaoGrupoComplemento(int $grupo_id): void {
-    $this->grupoComplementoAtual = $this->itemAtual->grupo_complemento()->where('id', $grupo_id)->first();
-    $this->grupoComplementoEdicao->fill($this->grupoComplementoAtual->toArray());
-    $this->grupoComplementoEdicao->alimentaComplementos($this->grupoComplementoAtual->complementos);
-    $this->drawerEdicaoComplementoItem = true;
+  public function setGrupoComplemento(int $grupoId, string $acao): void
+  {
+    if (!$this->itemAtual) {
+      return;
+    }
+
+    $query = $this->itemAtual->grupo_complemento();
+
+    if ($acao === 'editar') {
+      $query->with('complementos');
+    }
+
+    $grupo = $query->findOrFail($grupoId);
+    $this->grupoComplementoAtual = $grupo;
+
+    if ($acao === 'editar') {
+      $this->grupoComplementoEdicao->fill($grupo->toArray());
+      $this->grupoComplementoEdicao->alimentaComplementos($grupo->complementos);
+      $this->drawerEdicaoComplementoItem = true;
+      return;
+    }
+
+    if ($acao === 'remover') {
+      $this->modalConfirmacaoRemocaoGrupoComplemento = true;
+      return;
+    }
+  }
+
+  public function copiarComplementoOutroItem(): void
+  {
+    // Pré-condições mínimas
+    if (!$this->itemAtual || !$this->categoriaAtual) {
+      $this->warning('Nenhum item/categoria atual selecionado.');
+      return;
+    }
+    if (empty($this->categoriaSelecionadaCopiaComplemento) || empty($this->itemSelecionadoCopiaComplemento)) {
+      $this->warning('Selecione a categoria e o item de origem para copiar os complementos.');
+      return;
+    }
+
+    // Busca o item fonte em memória a partir de $this->categorias (já eager-loaded)
+    $itemFonte = $this->obterItemFonteParaCopia();
+    if (!$itemFonte) {
+      $this->warning('Item de origem não encontrado no cardápio selecionado.');
+      return;
+    }
+
+    // Garante, se necessário, que grupos e complementos estão carregados (fallback sem reconsultar o que já existir)
+    $itemFonte->loadMissing(['grupo_complemento.complementos']);
+
+    $grupos = $itemFonte->grupo_complemento ?? collect();
+    if ($grupos->isEmpty()) {
+      $this->warning('O item de origem não possui grupos de complementos para copiar.');
+      return;
+    }
+
+    \Illuminate\Support\Facades\DB::transaction(function () use ($grupos) {
+      foreach ($grupos as $grupo) {
+        $this->copiarGrupoEComplementos($grupo, $this->itemAtual->id);
+      }
+    });
+
+    $this->finalizarFluxoCopiaComplementos();
+  }
+  public function removerGrupoComplemento(): void
+  {
+    $this->grupoComplementoAtual->delete();
+    $this->success('Grupo de complementos removido com sucesso');
+    $this->modalConfirmacaoRemocaoGrupoComplemento = false;
+  }
+
+  private function obterItemFonteParaCopia(): ?\App\Models\Item
+  {
+    // Localiza categoria na coleção já carregada (inclui withTrashed)
+    $categoria = $this->categorias
+      ->first(fn ($c) => (int)$c->id === (int)$this->categoriaSelecionadaCopiaComplemento);
+
+    if (!$categoria) {
+      return null;
+    }
+
+    // Itens já vieram com 'grupo_complemento.complementos' via carregaCategorias
+    return $categoria->itens
+      ->first(fn ($i) => (int)$i->id === (int)$this->itemSelecionadoCopiaComplemento);
+  }
+
+  private function copiarGrupoEComplementos(\App\Models\GrupoComplemento $grupo, int $itemDestinoId): void
+  {
+    $grupoCopiado = $grupo->replicate()->fill([
+      'item_id' => $itemDestinoId,
+    ]);
+    $grupoCopiado->save();
+
+    foreach ($grupo->complementos as $complemento) {
+      $complementoCopiado = $complemento->replicate()->fill([
+        'grupo_id' => $grupoCopiado->id,
+      ]);
+      $complementoCopiado->save();
+    }
+  }
+
+  private function finalizarFluxoCopiaComplementos(): void
+  {
+    $this->success('Grupos de complementos e complementos copiados com sucesso.');
+    $this->copia_complemento = false;
+    $this->categoriaSelecionadaCopiaComplemento = null;
+    $this->itemSelecionadoCopiaComplemento = null;
   }
 
   /**

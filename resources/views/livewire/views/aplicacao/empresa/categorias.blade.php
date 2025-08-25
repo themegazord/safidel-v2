@@ -973,7 +973,11 @@
               @endif
             </x-tab>
             <x-tab name="complementos" label="Complementos" class="h-[82vh]">
-              <div class="h-[70vh] overflow-y-scroll">
+              <div class="h-[70vh] overflow-y-scroll"
+                x-data="{
+                  copiaComplemento: $wire.entangle('copia_complemento').live
+                }"
+              >
                 <h1 class="text-xl font-bold">Complementos</h1>
                 <p class="text-base-content/50 text-sm mt-1">Seu item tem complementos pra ficar ainda mais gostoso?
                   Indique
@@ -1008,9 +1012,9 @@
                             @endif
                             <x-button icon="o-pencil-square" spinner class="btn-sm"
                                       tooltip="Editar item"
-                                      wire:click="setEdicaoGrupoComplemento({{ $grupo->id }})"/>
+                                      wire:click="setGrupoComplemento({{ $grupo->id }}, 'editar')"/>
                             <x-button icon="o-trash"
-                                      wire:click="setRemoveGrupoComplemento({{ $grupo->id }})"
+                                      wire:click="setGrupoComplemento({{ $grupo->id }}, 'remover')"
                                       spinner
                                       class="btn-sm" tooltip="Remover item"/>
                           </div>
@@ -1031,60 +1035,47 @@
                 <div class="flex flex-col sm:flex-row gap-4 my-4">
                   <x-button label="Adicionar um complemento" icon="o-plus" class="btn btn-outline"
                             wire:click="preparaCadastroGrupoComplementos"
-                            :disabled="$copia_complemento"/>
+                            x-bind:disabled="copiaComplemento"/>
                   <x-button label="Copiar complemento de outro item" icon="o-document-duplicate"
                             class="btn btn-outline"
-                            @click="$wire.$set('copia_complemento', true)"/>
+                            @click="copiaComplemento = true"/>
                 </div>
 
-                @if ($copia_complemento)
-                  <x-card class="border-2 border-primary border-solid my-4"
-                          title="Copiar grupo existente" shadow
-                          separator>
-                    <x-slot:menu>
-                      <x-button class="btn btn-outline" label="Cancelar"
-                                @click="$wire.$set('copia_complemento', false)"/>
-                    </x-slot:menu>
-                    <x-slot:actions>
-                      <x-button class="btn" label="Copiar" icon="o-document-duplicate"
-                                wire:click="copiarComplementoOutroItem"/>
-                    </x-slot:actions>
+                <x-card class="border-2 border-primary border-solid my-4"
+                        title="Copiar grupo existente" shadow
+                        separator
+                        x-show="copiaComplemento">
+                  <x-slot:menu>
+                    <x-button class="btn btn-outline" label="Cancelar"
+                              @click="copiaComplemento = false"/>
+                  </x-slot:menu>
+                  <x-slot:actions>
+                    <x-button class="btn" label="Copiar" icon="o-document-duplicate"
+                              wire:click="copiarComplementoOutroItem"/>
+                  </x-slot:actions>
 
+                  <div class="mb-4">
+                    <x-select
+                      :options="$categoriaAtual->cardapio->categorias()->where('tipo', 'I')->get()"
+                      option-value="id" option-label="nome"
+                      placeholder="Selecione a categoria..."
+                      wire:model.live="categoriaSelecionadaCopiaComplemento"
+                      label="Primeiro selecione a categoria"
+                      required />
+                  </div>
+
+                  @if (!is_null($categoriaSelecionadaCopiaComplemento))
                     <div class="mb-4">
                       <x-select
-                        :options="$categoriaAtual->cardapio->categorias()->where('tipo', 'I')->get()"
+                        :options="$categoriaAtual->cardapio->categorias()->find($categoriaSelecionadaCopiaComplemento)->itens"
                         option-value="id" option-label="nome"
-                        placeholder="Selecione a categoria..."
-                        wire:model.live="categoriaSelecionadaCopiaComplemento">
-                        <x-slot:label>
-                          <label class="flex gap-4 items-end">
-                            <p class="text-xl font-bold">Primeiro selecione a categoria</p>
-                            <i
-                              class="text-gray-500">(obrigatório)</i>
-                          </label>
-                        </x-slot:label>
-                      </x-select>
+                        label="Depois selecione o item"
+                        placeholder="Selecione o item..."
+                        wire:model.live="itemSelecionadoCopiaComplemento"
+                        required />
                     </div>
-
-                    @if (!is_null($categoriaSelecionadaCopiaComplemento))
-                      <div class="mb-4">
-                        <x-select
-                          :options="\App\Models\Categoria::find($categoriaSelecionadaCopiaComplemento)->itens"
-                          option-value="id" option-label="nome"
-                          placeholder="Selecione o item..."
-                          wire:model.live="itemSelecionadoCopiaComplemento">
-
-                          <x-slot:label>
-                            <label class="flex gap-4 items-end">
-                              <p class="text-xl font-bold">Depois selecione o item</p> <i
-                                class="text-gray-500">(obrigatório)</i>
-                            </label>
-                          </x-slot:label>
-                        </x-select>
-                      </div>
-                    @endif
-                  </x-card>
-                @endif
+                  @endif
+                </x-card>
               </div>
             </x-tab>
           @else
@@ -1533,5 +1524,44 @@
     </x-slot:actions>
   </x-modal>
   {{-- modal confirmacao remocao item --}}
+
+  {{-- modal confirmacao remocao grupo complemento --}}
+  <x-modal wire:model="modalConfirmacaoRemocaoGrupoComplemento">
+    <x-slot:title>
+      Confirmar remoção
+    </x-slot:title>
+
+    <div class="space-y-2">
+      <p>Tem certeza que deseja remover o grupo de complementos abaixo?</p>
+      <div class="p-3 rounded bg-base-200">
+        <div class="font-semibold">
+          {{ $grupoComplementoAtual?->nome ?? 'Grupo selecionado' }}
+        </div>
+        <div class="text-sm opacity-70">
+          ID: {{ $grupoComplementoAtual?->id ?? '-' }}
+        </div>
+      </div>
+      <p class="text-sm text-warning">
+        Esta ação é permanente e não poderá ser desfeita.
+      </p>
+    </div>
+
+    <x-slot:actions>
+      <x-button
+        label="Cancelar"
+        class="btn-ghost"
+        @click="$wire.set('modalConfirmacaoRemocaoGrupoComplemento', false)"
+      />
+      <x-button
+        label="Remover"
+        icon="o-trash"
+        class="btn-error"
+        wire:click="removerGrupoComplemento"
+        wire:loading.attr="disabled"
+        spinner="removerGrupoComplemento"
+      />
+    </x-slot:actions>
+  </x-modal>
+  {{-- modal confirmacao remocao grupo complemento --}}
 
 </div>
