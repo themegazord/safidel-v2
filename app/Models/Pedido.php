@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[ObservedBy([PedidoObserver::class])]
+//#[ObservedBy([PedidoObserver::class])]
 class Pedido extends Model
 {
   use SoftDeletes;

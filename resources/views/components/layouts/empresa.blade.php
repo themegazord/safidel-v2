@@ -9,6 +9,8 @@
   @vite(['resources/css/app.css', 'resources/js/app.js'])
   {{--  Currency  --}}
   <script type="text/javascript" src="https://cdn.jsdelivr.net/gh/robsontenorio/mary@0.44.2/libs/currency/currency.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/sort@3.x.x/dist/cdn.min.js"></script>
+{{--  <script src="https://cdn.jsdelivr.net/gh/livewire/sortable@v1.x.x/dist/livewire-sortable.js"></script>--}}
 </head>
 <body class="min-h-screen font-sans antialiased bg-base-200">
 
@@ -43,6 +45,7 @@
           <x-slot:actions>
             <x-button icon="o-power" class="btn-circle btn-ghost btn-xs" tooltip-left="logoff" no-wire-navigate
                       link="/logout"/>
+            <x-theme-toggle/>
           </x-slot:actions>
         </x-list-item>
 
@@ -54,9 +57,9 @@
       <x-menu-item title="Desempenho" icon="o-chart-bar"
                    link="{{ route('aplicacao.empresa.dashboard') }}"
                    no-wire-navigate/>
-{{--      <x-menu-item title="Pedidos" icon="o-document-text"--}}
-{{--                   link="{{ route('aplicacao.empresa.pedidos', ['cnpj' => substr(request()->path(), 0, 14)]) }}"--}}
-{{--                   no-wire-navigate/>--}}
+      <x-menu-item title="Pedidos" icon="o-document-text"
+                   link="{{ route('aplicacao.empresa.pedidos') }}"
+                   no-wire-navigate/>
 {{--      <x-menu-item title="Pedidos mesa" icon="o-tag"--}}
 {{--                   link="{{ route('aplicacao.empresa.pedido_mesa', ['cnpj' => substr(request()->path(), 0, 14)]) }}"--}}
 {{--                   no-wire-navigate/>--}}

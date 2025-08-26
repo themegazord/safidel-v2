@@ -1,5 +1,4 @@
 <div class="p-4">
-  <x-theme-toggle/>
   <x-header title="Categorias"
             subtitle="Aqui você vai poder cadastrar os itens que seus clientes acessarão quando esse cardápio estiver operante! Personalize e organize suas categorias de produtos no Safi Delivery para criar experiências que conquistam.">
     <x-slot:actions>

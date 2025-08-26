@@ -21,4 +21,5 @@ Route::middleware(\App\Http\Middleware\SomenteEmpresaMiddleware::class)->prefix(
     Route::get('/', Views\Aplicacao\Empresa\Cardapios::class)->name('aplicacao.empresa.cardapios');
     Route::get('/categorias/{cardapio_id}/', Views\Aplicacao\Empresa\Categorias::class)->name('aplicacao.empresa.categorias');
   });
+  Route::get('/pedidos', Views\Aplicacao\Empresa\Pedidos::class)->name('aplicacao.empresa.pedidos');
 });
