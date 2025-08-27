@@ -77,7 +77,8 @@
   </div>
 
   {{--  modal de visualizacao do pedido--}}
-  <x-modal wire:model="modalDetalhePedido" class="backdrop-blur" box-class="w-full max-w-5xl p-4 min-h-[95vh]" persistent>
+  <x-modal wire:model="modalDetalhePedido" class="backdrop-blur" box-class="w-full max-w-5xl p-4 min-h-[95vh]"
+           persistent>
     @if ($pedidoSelecionado)
       <x-header separator>
         <x-slot:title>
@@ -89,21 +90,23 @@
             <x-badge value="{{ $pedidoSelecionado->defineStatusPedidoCliente() }}"
                      class="{{ $pedidoSelecionado->defineCorDependendoStatus() }} whitespace-nowrap px-2 py-1 inline-flex items-center"/>
 
-            <x-badge value="{{ $this->getTempoPedidoAberto($pedidoSelecionado->created_at ) }}" class="ml-2"/>
+            <x-badge value="{{ $this->getTempoPedidoAberto($pedidoSelecionado->created_at ) }}"
+                     class="ml-2"/>
           </div>
         </x-slot:title>
         <x-slot:actions>
           <x-button icon="o-trash" class="btn-outline btn-error"/>
           <x-button icon="o-printer" class="btn-outline"/>
           <x-button icon="o-arrow-right" class="btn-outline btn-primary"/>
-          <x-button icon="o-x-mark" class="btn btn-ghost btn-error" />
+          <x-button icon="o-x-mark" class="btn btn-ghost btn-error"
+                    @click="$wire.set('modalDetalhePedido', false)"/>
         </x-slot:actions>
       </x-header>
 
-      <div class="max-w-4xl max-h-[90vh] overflow-y-auto p-6">
+      <div class="w-full max-h-[90vh] overflow-y-auto p-6">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <!-- Coluna Esquerda: Cliente e Entrega -->
-          <div class="space-y-6">
+          <div class="space-y-6 col-span-1">
             <!-- Cliente -->
             <div class="bg-base-100 rounded-lg p-4 border">
               <h3 class="font-semibold text-lg mb-4 flex items-center gap-2">
@@ -112,23 +115,22 @@
               </h3>
               <div class="space-y-3">
                 <div>
-                  <p class="font-medium text-foreground">{{ $pedidoSelecionado->cliente->nome ?? '—' }}</p>
+                  <p class="font-medium">{{ $pedidoSelecionado->cliente->nome ?? '—' }}</p>
                   <div class="flex items-center gap-2 mt-1">
                     <x-icon name="o-phone" class="w-4 h-4 text-base-content/60"/>
                     <span class="text-sm text-base-content/60">{{ $pedidoSelecionado->cliente->telefone ?? '—' }}</span>
                   </div>
                 </div>
                 <p class="text-xs text-base-content/60">Já
-                  pediu {{ $pedidoSelecionado->cliente->historico_pedidos ?? 0 }}
+                  pediu {{ $pedidoSelecionado->cliente->pedidos()->where('status', 'entregue')->get()->count() ?? 0 }}
                   vezes.</p>
               </div>
             </div>
 
             <!-- Entrega -->
             @php
-              //            $tipoPedido = $pedidoSelecionado->defineTipoPedido() ?? ($pedidoSelecionado->tipo ?? '—');
-                          $tipoPedido = 's' ?? ($pedidoSelecionado->tipo ?? '—');
-                          $endereco = $pedidoSelecionado->endereco_formatado ?? ($pedidoSelecionado->endereco->completo ?? null);
+              $tipoPedido = $pedidoSelecionado->defineTipoPedido() ?? ($pedidoSelecionado->tipo ?? '—');
+              $endereco = $pedidoSelecionado->cliente->endereco->enderecoFormatado();
             @endphp
             @if(($tipoPedido === 'Delivery' || $tipoPedido === 'delivery') && $endereco)
               <div class="bg-base-100 rounded-lg p-4 border">
@@ -136,7 +138,7 @@
                   <x-icon name="o-map-pin" class="w-5 h-5 text-primary"/>
                   Entrega
                 </h3>
-                <p class="text-sm text-foreground leading-relaxed">{{ $endereco }}</p>
+                <p class="text-sm leading-relaxed">{{ $endereco }}</p>
               </div>
             @endif
 
@@ -146,7 +148,7 @@
                 <x-icon name="o-credit-card" class="w-5 h-5 text-primary"/>
                 Forma de pagamento
               </h3>
-              <p class="text-sm text-foreground">{{ $pedidoSelecionado->financeiro->forma_pagamento ?? '—' }}</p>
+              <p class="text-sm">{{ $pedidoSelecionado->financeiro->defineFormaPagamento() ?? '—' }}</p>
             </div>
           </div>
 
@@ -156,39 +158,108 @@
             <div class="bg-base-100 rounded-lg p-4 border">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="font-semibold text-lg">Itens do pedido</h3>
-                <x-button icon="o-pencil-square" variant="ghost" size="sm" class="text-base-content/60"
-                          tooltip="Editar itens"/>
+{{--                <x-button icon="o-pencil-square" variant="ghost" size="sm" class="text-base-content/60"--}}
+{{--                          tooltip="Editar itens"/>--}}
               </div>
 
               <div class="space-y-4">
                 @forelse(($pedidoSelecionado->itens ?? []) as $item)
                   <div class="border-b pb-4 last:border-b-0 last:pb-0">
-                    <div class="flex justify-between items-start mb-2">
-                      <div class="flex-1">
-                        <p class="font-medium text-foreground">
-                          {{ $item->quantidade ?? 1 }}x {{ $item->nome ?? $item->descricao ?? 'Item' }}
-                        </p>
-                        @if(!empty($item->customizacoes))
-                          <div class="mt-2 space-y-1">
-                            @foreach($item->customizacoes as $custom)
-                              <p class="text-sm text-base-content/60 pl-4">• {{ $custom }}</p>
-                            @endforeach
+                    <div class="flex flex-col gap-2 items-start mb-2">
+                      @if($item->tipo === 'I')
+                        <div class="flex justify-between w-full">
+                          <p class="font-medium">
+                            {{ $item->quantidade ?? 1 }}
+                            x {{ $item->nome ?? $item->descricao ?? 'Item' }}
+                          </p>
+                          @php
+                            $preco = (float) ($item->preco_unitario * $item->quantidade ?? 0);
+                            $totalItem = $preco; // ajuste se houver descontos
+                          @endphp
+                          <p class="font-medium">
+                            R$ {{ number_format($preco, 2, ',', '.') }}</p>
+                        </div>
+                        @forelse($item->complementos as $chaveComplemento => $complemento)
+                          @php
+                            $totalComplemento = floatval($complemento->preco_unitario * $complemento->qtde);
+                            $totalItem += $totalComplemento
+                          @endphp
+                          <div class="pl-8 flex justify-between w-full">
+                            <p class="text-xs text-base-content/60">{{ $complemento->qtde }}
+                              x {{ $complemento->nome }}</p>
+                            <p class="text-xs text-base-content/60">
+                              R${{ number_format($totalComplemento, 2, ',', '.') }}</p>
                           </div>
+                        @empty
+                          <p class="text-sm text-base-content/60 text-center w-full">Nenhum
+                            complemento no item.</p>
+                        @endforelse
+                        @if(!empty($item->observacao))
+                          <p class="text-sm text-base-content/60">Observação do
+                            item: {{ $item->observacao }}</p>
                         @endif
-                      </div>
-                      <div class="text-right ml-4">
-                        @php
-                          $preco = (float) ($item->preco ?? 0);
-                          $totalItem = $preco; // ajuste se houver descontos
-                        @endphp
-                        <p class="font-medium">R$ {{ number_format($preco, 2, ',', '.') }}</p>
-                        <p class="text-xs text-base-content/60">R$ 0,00</p>
-                        <p class="text-sm font-medium text-primary">R$ {{ number_format($totalItem, 2, ',', '.') }}</p>
-                      </div>
+                        <p class="text-sm font-medium text-primary text-right w-full">
+                          R$ {{ number_format($totalItem, 2, ',', '.') }}</p>
+                      @else
+                        <div class="flex justify-between w-full">
+                          <p class="font-medium">
+                            {{ $item->quantidade ?? 1 }}
+                            x {{ $item->nome ?? $item->descricao ?? 'Item' }}
+                          </p>
+                        </div>
+                        @if (is_null($pedidoSelecionado->pedido_ifood_id))
+                          @if (!is_null($item->borda_id))
+                            <div class="flex justify-between w-full">
+                              <p class="pl-8 text-sm text-base-content/60">Borda: {{ $item->borda->nome }}</p>
+                              <p class="text-sm text-base-content/60">
+                                R$ {{ number_format($item->borda->preco, 2, ',', '.') }}</p>
+                            </div>
+                          @endif
+                          @if (!is_null($item->massa_id))
+                            <div class="flex justify-between w-full">
+                              <p class="pl-8 text-sm text-base-content/60">Massa: {{ $item->massa->nome }}</p>
+                              <p class="text-sm text-base-content/60">
+                                R$ {{ number_format($item->massa->preco, 2, ',', '.') }}</p>
+                            </div>
+                          @endif
+                          @forelse($item->sabores as $chaveSabor => $sabor)
+                            <div class="flex justify-between w-full">
+                              <p class="pl-8 text-sm text-base-content/60">{{ $sabor->qtde }}x {{ $sabor->nome }}</p>
+                              <p class="text-sm text-base-content/60">
+                                R$ {{ number_format(floatval($sabor->preco_unitario * $sabor->qtde), 2, ',', '.') }}
+                              </p>
+                            </div>
+                          @empty
+                            <p class="text-sm text-base-content/60 text-center w-full">Nenhum sabor no item.</p>
+                          @endforelse
+                        @else
+                          @if(!$item->complementos->isEmpty())
+                            @forelse($item->complementos as $chaveComplemento => $complemento)
+                              <div class="flex justify-between w-full">
+                                <p class="pl-8 text-sm text-base-content/60">{{ $complemento->qtde }}
+                                  x {{ $complemento->nome }}</p>
+                                <p class="text-sm text-base-content/60">
+                                  R${{ number_format(floatval($complemento->preco_unitario * $complemento->qtde), 2, ',', '.') }}
+                                </p>
+                              </div>
+                            @empty
+                              <p class="text-sm text-base-content/60 text-center w-full">Nenhum sabor no item.</p>
+                            @endforelse
+                          @endif
+                        @endif
+                        @if(!empty($item->observacao))
+                          <p class="text-sm text-base-content/60">Observação do
+                            item: {{ $item->observacao }}</p>
+                        @endif
+                        <p class="text-sm font-medium text-primary text-right w-full">
+                          @if (is_null($pedidoSelecionado->pedido_ifood_id))
+                            R$ {{ number_format(array_sum($item->sabores->map(fn($s) => $s->qtde * $s->preco_unitario)->toArray()) + $item->massa->preco + $item->borda->preco, 2, ',', '.') }}
+                          @else
+                            R${{ number_format($item->subtotal, 2, ',', '.') }}
+                          @endif
+                        </p>
+                      @endif
                     </div>
-                    @if(!empty($item->observacao))
-                      <p class="text-sm text-base-content/60">Observação do item: {{ $item->observacao }}</p>
-                    @endif
                   </div>
                 @empty
                   <p class="text-sm text-base-content/60">Nenhum item no pedido.</p>
@@ -198,23 +269,41 @@
 
             <!-- Totais -->
             @php
-              $subtotal = (float) ($pedidoSelecionado->financeiro->subtotal ?? 0);
-              $frete = (float) ($pedidoSelecionado->financeiro->frete ?? 0);
-              $total = (float) ($pedidoSelecionado->financeiro->total ?? ($subtotal + $frete));
+              $subtotalReal = $pedidoSelecionado->financeiro->total - $pedidoSelecionado->valor_frete;
+
+              if (!is_null($pedidoSelecionado->cupomUsadoNoPedido()->first()) && $pedidoSelecionado->cupomUsadoNoPedido()->first()->onde_afetara === 'produto') {
+                $subtotalReal = ($subtotalReal * 100) / (100 - $pedidoSelecionado->cupomUsadoNoPedido()->first()->valor_desconto);
+              }
+
+              if (!is_null($pedidoSelecionado->cupomUsadoNoPedido()->first()) && $pedidoSelecionado->cupomUsadoNoPedido()->first()->onde_afetara === 'frete') {
+                $subtotalReal += $this->calculaDescontoCupomPedido($subtotalReal, $pedidoSelecionado->valor_frete);
+              }
             @endphp
             <div class="bg-base-100 rounded-lg p-4 border">
               <div class="space-y-3">
                 <div class="flex justify-between text-sm">
-                  <span class="text-base-content/60">Subtotal</span>
-                  <span class="font-medium">R$ {{ number_format($subtotal, 2, ',', '.') }}</span>
+                  <span class="text-base-content/60">Subtotal dos itens</span>
+                  <span class="font-medium">R$ {{ number_format($subtotalReal, 2, ',', '.') }}</span>
                 </div>
                 <div class="flex justify-between text-sm">
                   <span class="text-base-content/60">Frete</span>
-                  <span class="font-medium">R$ {{ number_format($frete, 2, ',', '.') }}</span>
+                  <span class="font-medium">R$ {{ number_format($pedidoSelecionado->valor_frete, 2, ',', '.') }}</span>
                 </div>
+                @if (!is_null($pedidoSelecionado->cupomUsadoNoPedido()->first()))
+                  <div class="flex justify between text-sm">
+                    @if ($pedidoSelecionado->cupomUsadoNoPedido()->first()->onde_afetara === 'produto')
+                      <span class="text-base-content/60">Desconto nos produtos</span>
+                    @else
+                      <span class="text-base-content/60">Desconto no frete</span>
+                    @endif
+                    <span class="font-medium">
+                      R$ {{ number_format($this->calculaDescontoCupomPedido($subtotalReal, $pedidoSelecionado->valor_frete), 2, ',', '.') }}
+                    </span>
+                  </div>
+                @endif
                 <div class="flex justify-between text-lg font-bold">
                   <span>Total</span>
-                  <span class="text-primary">R$ {{ number_format($total, 2, ',', '.') }}</span>
+                  <span class="text-primary">R$ {{ number_format($pedidoSelecionado->financeiro->total, 2, ',', '.') }}</span>
                 </div>
               </div>
             </div>
