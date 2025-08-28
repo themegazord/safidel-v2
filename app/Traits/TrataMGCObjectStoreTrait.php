@@ -1,6 +1,6 @@
 <?php
 
-namespace App;
+namespace App\Traits;
 
 use Aws\Exception\AwsException;
 use Aws\S3\S3Client;
